@@ -72,8 +72,20 @@ def parse_args():
     parser.add_argument(
         "--max-model-len",
         type=int,
-        default=4096,
+        default=16384,
         help="Maximum sequence length passed to vLLM.",
+    )
+    parser.add_argument(
+        "--min-pixels",
+        type=int,
+        default=28 * 28,
+        help="Minimum number of pixels used by the multimodal processor.",
+    )
+    parser.add_argument(
+        "--max-pixels",
+        type=int,
+        default=1280 * 28 * 28,
+        help="Maximum number of pixels used by the multimodal processor.",
     )
     parser.add_argument(
         "--tensor-parallel-size",
@@ -249,6 +261,10 @@ def main():
         max_lora_rank=max_lora_rank,
         tensor_parallel_size=args.tensor_parallel_size,
         max_model_len=args.max_model_len,
+        mm_processor_kwargs={
+            "min_pixels": args.min_pixels,
+            "max_pixels": args.max_pixels,
+        },
         limit_mm_per_prompt={"image": max_images},
         trust_remote_code=args.trust_remote_code,
     )
