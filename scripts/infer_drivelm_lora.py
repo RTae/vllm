@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import argparse
 import json
+import os
 from pathlib import Path
-from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -84,6 +86,11 @@ def parse_args():
         action="store_true",
         help="Enable trust_remote_code for base model loading.",
     )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Force local-only model loading and disable Hugging Face Hub network requests.",
+    )
     return parser.parse_args()
 
 
@@ -101,6 +108,11 @@ def resolve_base_model(adapter_config: dict, override: str | None) -> str:
         raise ValueError(
             "Base model could not be determined. Pass --base-model explicitly."
         )
+
+    base_model_path = Path(base_model).expanduser()
+    if base_model_path.exists():
+        return str(base_model_path.resolve())
+
     return base_model
 
 
@@ -200,6 +212,10 @@ def build_prompt(processor, question: str, num_images: int) -> str:
 def main():
     args = parse_args()
 
+    if args.offline:
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
     from transformers import AutoProcessor
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
@@ -211,6 +227,7 @@ def main():
     processor = AutoProcessor.from_pretrained(
         base_model,
         trust_remote_code=args.trust_remote_code,
+        local_files_only=args.offline,
     )
 
     dataset = load_samples(args.dataset, args.split)
