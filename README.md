@@ -66,7 +66,8 @@ Find the full list of supported models [here](https://docs.vllm.ai/en/latest/mod
 Install vLLM with [`uv`](https://docs.astral.sh/uv/) (recommended) or `pip`:
 
 ```bash
-uv pip install vllm
+uv pip install -e . --torch-backend=auto
+uv pip install datasets
 ```
 
 Or [build from source](https://docs.vllm.ai/en/latest/getting_started/installation/gpu/index.html#build-wheel-from-source) for development.
