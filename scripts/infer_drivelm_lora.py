@@ -1,0 +1,282 @@
+import argparse
+import json
+from pathlib import Path
+from PIL import Image
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Run offline inference on a DriveLM-style dataset with a local LoRA adapter.",
+    )
+    parser.add_argument(
+        "--adapter-path",
+        type=Path,
+        required=True,
+        help="Path to the local PEFT LoRA adapter directory.",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=Path,
+        required=True,
+        help="Path to a Hugging Face dataset directory or a JSON file.",
+    )
+    parser.add_argument(
+        "--base-model",
+        type=str,
+        default=None,
+        help=(
+            "Base model path or Hugging Face model ID. If omitted, the script "
+            "uses adapter_config.json's base_model_name_or_path."
+        ),
+    )
+    parser.add_argument(
+        "--adapter-name",
+        type=str,
+        default="drivelm-lora",
+        help="Logical LoRA name used in the vLLM request.",
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        default=None,
+        help="Optional split name when loading a dataset saved with load_from_disk.",
+    )
+    parser.add_argument(
+        "--start-index",
+        type=int,
+        default=0,
+        help="Dataset row index to start from.",
+    )
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=4,
+        help="Number of samples to run.",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=256,
+        help="Maximum number of generated tokens.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature.",
+    )
+    parser.add_argument(
+        "--max-model-len",
+        type=int,
+        default=4096,
+        help="Maximum sequence length passed to vLLM.",
+    )
+    parser.add_argument(
+        "--tensor-parallel-size",
+        type=int,
+        default=1,
+        help="Tensor parallel size passed to vLLM.",
+    )
+    parser.add_argument(
+        "--trust-remote-code",
+        action="store_true",
+        help="Enable trust_remote_code for base model loading.",
+    )
+    return parser.parse_args()
+
+
+def load_adapter_config(adapter_path: Path) -> dict:
+    config_path = adapter_path / "adapter_config.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"Missing adapter config: {config_path}")
+    with config_path.open("r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def resolve_base_model(adapter_config: dict, override: str | None) -> str:
+    base_model = override or adapter_config.get("base_model_name_or_path")
+    if not base_model:
+        raise ValueError(
+            "Base model could not be determined. Pass --base-model explicitly."
+        )
+    return base_model
+
+
+def load_samples(dataset_path: Path, split: str | None):
+    if dataset_path.is_dir():
+        from datasets import load_from_disk
+
+        dataset = load_from_disk(str(dataset_path))
+        if split is not None:
+            return dataset[split]
+        return dataset
+
+    if dataset_path.suffix.lower() == ".json":
+        with dataset_path.open("r", encoding="utf-8") as file:
+            return json.load(file)
+
+    raise ValueError(
+        "Dataset must be a load_from_disk directory or a JSON file."
+    )
+
+
+def get_sample_value(sample: dict, *keys, default=None):
+    for key in keys:
+        if key in sample:
+            return sample[key]
+    return default
+
+
+def resolve_image_path(image_path: str, dataset_path: Path) -> Path:
+    candidate = Path(image_path)
+    if candidate.is_absolute():
+        return candidate
+
+    repo_relative = REPO_ROOT / candidate
+    if repo_relative.exists():
+        return repo_relative
+
+    dataset_relative = dataset_path.parent / candidate
+    return dataset_relative
+
+
+def load_images(sample: dict, dataset_path: Path) -> list[Image.Image]:
+    from PIL import Image
+
+    image_paths = get_sample_value(sample, "image_paths", "image")
+    if image_paths is None:
+        raise KeyError("Sample is missing 'image_paths' or 'image'.")
+
+    if isinstance(image_paths, str):
+        image_paths = [image_paths]
+
+    images = []
+    for image_path in image_paths:
+        resolved_path = resolve_image_path(image_path, dataset_path)
+        if not resolved_path.exists():
+            raise FileNotFoundError(f"Image not found: {resolved_path}")
+        with Image.open(resolved_path) as image:
+            images.append(image.convert("RGB"))
+    return images
+
+
+def extract_question_and_reference(sample: dict) -> tuple[str, str | None]:
+    conversations = sample.get("conversations")
+    if not conversations:
+        raise KeyError("Sample is missing 'conversations'.")
+
+    question = None
+    answer = None
+    for turn in conversations:
+        if turn.get("from") == "human" and question is None:
+            question = turn.get("value")
+        if turn.get("from") == "gpt" and answer is None:
+            answer = turn.get("value")
+
+    if not question:
+        raise ValueError("Could not find a human prompt in 'conversations'.")
+
+    return question, answer
+
+
+def build_prompt(processor, question: str, num_images: int) -> str:
+    placeholders = [{"type": "image"} for _ in range(num_images)]
+    messages = [
+        {"role": "system", "content": "You are a helpful driving assistant."},
+        {
+            "role": "user",
+            "content": [*placeholders, {"type": "text", "text": question}],
+        },
+    ]
+    return processor.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+
+
+def main():
+    args = parse_args()
+
+    from transformers import AutoProcessor
+    from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
+
+    adapter_config = load_adapter_config(args.adapter_path)
+    base_model = resolve_base_model(adapter_config, args.base_model)
+    max_lora_rank = adapter_config.get("r", 64)
+
+    processor = AutoProcessor.from_pretrained(
+        base_model,
+        trust_remote_code=args.trust_remote_code,
+    )
+
+    dataset = load_samples(args.dataset, args.split)
+    end_index = min(len(dataset), args.start_index + args.num_samples)
+    if args.start_index >= len(dataset):
+        raise IndexError(
+            f"start-index {args.start_index} is out of range for dataset of size {len(dataset)}"
+        )
+
+    samples = [dataset[index] for index in range(args.start_index, end_index)]
+    max_images = max(
+        len(get_sample_value(sample, "image_paths", "image", default=[])) or 1
+        for sample in samples
+    )
+
+    llm = LLM(
+        model=base_model,
+        enable_lora=True,
+        max_lora_rank=max_lora_rank,
+        tensor_parallel_size=args.tensor_parallel_size,
+        max_model_len=args.max_model_len,
+        limit_mm_per_prompt={"image": max_images},
+        trust_remote_code=args.trust_remote_code,
+    )
+    sampling_params = SamplingParams(
+        temperature=args.temperature,
+        max_tokens=args.max_tokens,
+    )
+    lora_request = LoRARequest(args.adapter_name, 1, str(args.adapter_path))
+
+    inputs = []
+    metadata = []
+    for sample in samples:
+        images = load_images(sample, args.dataset)
+        question, reference = extract_question_and_reference(sample)
+        prompt = build_prompt(processor, question, len(images))
+        inputs.append(
+            {
+                "prompt": prompt,
+                "multi_modal_data": {"image": images},
+            }
+        )
+        metadata.append(
+            {
+                "id": sample.get("id"),
+                "question": question,
+                "reference": reference,
+                "num_images": len(images),
+            }
+        )
+
+    outputs = llm.generate(
+        inputs,
+        sampling_params=sampling_params,
+        lora_request=[lora_request] * len(inputs),
+    )
+
+    for meta, output in zip(metadata, outputs, strict=True):
+        print("=" * 80)
+        print(f"id: {meta['id']}")
+        print(f"images: {meta['num_images']}")
+        print(f"question: {meta['question']}")
+        if meta["reference"] is not None:
+            print(f"reference: {meta['reference']}")
+        print(f"prediction: {output.outputs[0].text.strip()}")
+
+
+if __name__ == "__main__":
+    main()
