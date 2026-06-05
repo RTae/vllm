@@ -55,8 +55,8 @@ def parse_args():
     parser.add_argument(
         "--num-samples",
         type=int,
-        default=4,
-        help="Number of samples to run.",
+        default=-1,
+        help="Number of samples to run. Use -1 (default) to run all samples in the dataset.",
     )
     parser.add_argument(
         "--max-tokens",
@@ -428,7 +428,10 @@ def main():
         ) from error
 
     dataset = load_samples(args.dataset, args.split)
-    end_index = min(len(dataset), args.start_index + args.num_samples)
+    if args.num_samples == -1:
+        end_index = len(dataset)
+    else:
+        end_index = min(len(dataset), args.start_index + args.num_samples)
     if args.start_index >= len(dataset):
         raise IndexError(
             f"start-index {args.start_index} is out of range for dataset of size {len(dataset)}"

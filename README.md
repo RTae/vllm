@@ -161,3 +161,19 @@ python scripts/infer_drivelm_lora.py \
   --sparge-attn \
   --sparge-topk 0.5
 ```
+
+## Ablation Study of Speculative Decoding
+
+```bash
+./scripts/ablation_test.sh
+
+# run with nohub
+nohup ./scripts/ablation_test.sh > ablation_test.log 2>&1 &
+tail -f ablation_test.log
+```
+
+lower samples for faster testing:
+
+```bash
+NUM_SAMPLES=10 ./scripts/ablation_test.sh
+```
