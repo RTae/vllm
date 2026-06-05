@@ -187,10 +187,10 @@ python scripts/infer_drivelm_lora.py \
 ## Ablation Study of Speculative Decoding
 
 ```bash
-NUM_SAMPLES=100 ./scripts/ablation_test.sh
+NUM_SAMPLES=1000 ./scripts/ablation_test.sh
 
 # run with nohup
-nohup NUM_SAMPLES=100 ./scripts/ablation_test.sh > ablation_test.log 2>&1 &
+nohup NUM_SAMPLES=1000 ./scripts/ablation_test.sh > ablation_test.log 2>&1 &
 tail -f ablation_test.log
 ```
 
