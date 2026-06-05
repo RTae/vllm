@@ -151,6 +151,18 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--eagle3",
+        type=str,
+        default=None,
+        metavar="EAGLE3_MODEL_PATH",
+        help=(
+            "Path to an Eagle3 speculative draft head (e.g. "
+            "/workspace/.hf_home/qwen3-vl-2b-eagle3). Enables Eagle3 speculative "
+            "decoding which achieves much higher acceptance rates than a draft model "
+            "because it conditions on the target model hidden states."
+        ),
+    )
+    parser.add_argument(
         "--num-speculative-tokens",
         type=int,
         default=DEFAULT_NUM_SPECULATIVE_TOKENS,
@@ -358,7 +370,24 @@ def main():
     if args.speculative_decoding and args.ngram:
         raise ValueError("--speculative-decoding and --ngram are mutually exclusive.")
 
-    if args.speculative_decoding:
+    if args.eagle3 and (args.speculative_decoding or args.ngram):
+        raise ValueError("--eagle3 is mutually exclusive with --speculative-decoding and --ngram.")
+
+    if args.eagle3:
+        eagle3_path = str(Path(args.eagle3).expanduser().resolve())
+        if not Path(eagle3_path).exists():
+            raise FileNotFoundError(
+                f"Eagle3 model not found: {eagle3_path}. Download it with:\n"
+                "  HF_ENDPOINT=https://hf-mirror.com hf download taobao-mnn/Qwen3-VL-2B-Instruct-Eagle3 "
+                "--local-dir /workspace/.hf_home/qwen3-vl-2b-eagle3"
+            )
+        speculative_config = {
+            "method": "eagle3",
+            "model": eagle3_path,
+            "num_speculative_tokens": args.num_speculative_tokens,
+            "draft_tensor_parallel_size": args.draft_tensor_parallel_size,
+        }
+    elif args.speculative_decoding:
         draft_model = resolve_draft_model(base_model, args.draft_model)
         speculative_config = {
             "method": "draft_model",

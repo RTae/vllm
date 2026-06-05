@@ -120,6 +120,17 @@ python scripts/infer_drivelm_lora.py \
   --num-speculative-tokens 5
 ```
 
+#### With EAGLE proposer
+```bash
+python /workspace/vllm/scripts/infer_drivelm_lora.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 10 \
+  --eagle3 /workspace/.hf_home/qwen3-vl-8b-eagle3 \
+  --num-speculative-tokens 5
+```
+
 ### Attention Backends
 #### With Sparge Attention
 ```bash

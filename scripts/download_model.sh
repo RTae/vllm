@@ -9,4 +9,4 @@ fi
 
 hf download Qwen/Qwen3-VL-8B-Instruct --local-dir /workspace/.hf_home/qwen3-vl-8b
 hf download Qwen/Qwen3-VL-2B-Instruct --local-dir /workspace/.hf_home/qwen3-vl-2b
-hf download taobao-mnn/Qwen3-VL-2B-Instruct-Eagle3 --local-dir /workspace/.hf_home/qwen3-vl-2b-eagle3
+hf download taobao-mnn/Qwen3-VL-8B-Instruct-Eagle3 --local-dir /workspace/.hf_home/qwen3-vl-8b-eagle3
