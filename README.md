@@ -86,9 +86,8 @@ python scripts/create_drivelm_nuscenes.py
 
 ## Test Inference
 
-### Run the following command to test inference on a Qwen3-VL-8B-Instruct LoRA adapter:
+### Run baseline
 ```bash
-HF_HOME=/workspace/.hf_home HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
@@ -96,12 +95,14 @@ python scripts/infer_drivelm_lora.py \
   --num-samples 4 \
 ```
 
-### Run the following command to test inference on a Qwen3-VL-2B-Instruct LoRA adapter:
+### Run with speculative decoding
 ```bash
-HF_HOME=/workspace/.hf_home HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
 python scripts/infer_drivelm_lora.py \
-  --adapter-path /workspace/vllm/models/Qwen3-VL-2B-Instruct \
-  --base-model /workspace/.hf_home/qwen3-vl-2b/ \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 4 \
+  --speculative-decoding \
+  --draft-model /workspace/.hf_home/qwen3-vl-2b/ \
+  --num-speculative-tokens 5
 ```

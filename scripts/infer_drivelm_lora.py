@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_NUM_SPECULATIVE_TOKENS = 5
 
 
 def parse_args():
@@ -98,6 +99,32 @@ def parse_args():
         action="store_true",
         help="Enable trust_remote_code for base model loading.",
     )
+    parser.add_argument(
+        "--speculative-decoding",
+        action="store_true",
+        help="Enable speculative decoding using a smaller draft model.",
+    )
+    parser.add_argument(
+        "--draft-model",
+        type=str,
+        default=None,
+        help=(
+            "Local path to the draft model used for speculative decoding. If "
+            "omitted, the script tries to infer a 2B draft model from an 8B target model path."
+        ),
+    )
+    parser.add_argument(
+        "--num-speculative-tokens",
+        type=int,
+        default=DEFAULT_NUM_SPECULATIVE_TOKENS,
+        help="Number of speculative tokens proposed by the draft model per step.",
+    )
+    parser.add_argument(
+        "--draft-tensor-parallel-size",
+        type=int,
+        default=1,
+        help="Tensor parallel size for the speculative draft model.",
+    )
     return parser.parse_args()
 
 
@@ -121,6 +148,58 @@ def resolve_base_model(adapter_config: dict, override: str | None) -> str:
         return str(base_model_path.resolve())
 
     return base_model
+
+
+def infer_default_draft_model(base_model: str) -> str | None:
+    local_candidates = [
+        Path("/workspace/.hf_home/qwen3-vl-2b"),
+        Path("/workspace/.hf_home/qwen3-vl-2b/"),
+    ]
+    for candidate in local_candidates:
+        if candidate.exists():
+            return str(candidate.resolve())
+
+    snapshot_root = Path(
+        "/workspace/.hf_home/hub/models--qwen--Qwen3-VL-2B-Instruct/snapshots"
+    )
+    if snapshot_root.exists():
+        snapshot_dirs = sorted(path for path in snapshot_root.iterdir() if path.is_dir())
+        if snapshot_dirs:
+            return str(snapshot_dirs[-1].resolve())
+
+    replacements = (
+        ("Qwen3-VL-8B-Instruct", "Qwen3-VL-2B-Instruct"),
+        ("qwen3-vl-8b", "qwen3-vl-2b"),
+        ("Qwen/Qwen3-VL-8B-Instruct", "Qwen/Qwen3-VL-2B-Instruct"),
+    )
+
+    for source, target in replacements:
+        if source not in base_model:
+            continue
+
+        candidate = base_model.replace(source, target)
+        candidate_path = Path(candidate).expanduser()
+        if candidate_path.exists():
+            return str(candidate_path.resolve())
+        return candidate
+
+    return None
+
+
+def resolve_draft_model(base_model: str, override: str | None) -> str:
+    draft_model = override or infer_default_draft_model(base_model)
+    if not draft_model:
+        raise ValueError(
+            "Draft model could not be inferred from the target model. Pass --draft-model explicitly."
+        )
+
+    draft_model_path = Path(draft_model).expanduser()
+    if draft_model_path.exists():
+        return str(draft_model_path.resolve())
+
+    raise FileNotFoundError(
+        "Draft model was not found locally. Download it first or pass a valid local path with --draft-model."
+    )
 
 
 def load_samples(dataset_path: Path, split: str | None):
@@ -229,6 +308,17 @@ def main():
     adapter_config = load_adapter_config(args.adapter_path)
     base_model = resolve_base_model(adapter_config, args.base_model)
     max_lora_rank = adapter_config.get("r", 64)
+    speculative_config = None
+
+    if args.speculative_decoding:
+        draft_model = resolve_draft_model(base_model, args.draft_model)
+        speculative_config = {
+            "method": "draft_model",
+            "model": draft_model,
+            "num_speculative_tokens": args.num_speculative_tokens,
+            "draft_tensor_parallel_size": args.draft_tensor_parallel_size,
+            "max_model_len": args.max_model_len,
+        }
 
     try:
         processor = AutoProcessor.from_pretrained(
@@ -267,6 +357,7 @@ def main():
         },
         limit_mm_per_prompt={"image": max_images},
         trust_remote_code=args.trust_remote_code,
+        speculative_config=speculative_config,
     )
     sampling_params = SamplingParams(
         temperature=args.temperature,
