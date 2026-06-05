@@ -252,3 +252,7 @@ csrc/cpu/cpu_attn_dispatch_generated.h
 
 models/
 datasets
+
+inst_sm80_*.cu
+inst_sm89_*.cu
+inst_sm90_*.cu

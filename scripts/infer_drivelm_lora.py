@@ -243,6 +243,7 @@ def resolve_image_path(image_path: str, dataset_path: Path) -> Path:
 def load_images(sample: dict, dataset_path: Path) -> list[Image.Image]:
     from PIL import Image
 
+
     image_paths = get_sample_value(sample, "image_paths", "image")
     if image_paths is None:
         raise KeyError("Sample is missing 'image_paths' or 'image'.")
@@ -277,6 +278,24 @@ def extract_question_and_reference(sample: dict) -> tuple[str, str | None]:
         raise ValueError("Could not find a human prompt in 'conversations'.")
 
     return question, answer
+
+
+def validate_speculative_decoding(args, samples: list[dict], base_model: str) -> None:
+    if not args.speculative_decoding:
+        return
+
+    has_multimodal_input = any(
+        len(get_sample_value(sample, "image_paths", "image", default=[])) > 0
+        for sample in samples
+    )
+    is_qwen3_vl = "qwen3-vl" in base_model.lower()
+
+    if has_multimodal_input and is_qwen3_vl:
+        raise ValueError(
+            "Speculative decoding with a draft model is not currently supported "
+            "for multimodal Qwen3-VL inputs in this vLLM version. Use normal "
+            "decoding for image inputs, or switch to a text-only workload."
+        )
 
 
 def build_prompt(processor, question: str, num_images: int) -> str:
@@ -340,6 +359,8 @@ def main():
         )
 
     samples = [dataset[index] for index in range(args.start_index, end_index)]
+    validate_speculative_decoding(args, samples, base_model)
+
     max_images = max(
         len(get_sample_value(sample, "image_paths", "image", default=[])) or 1
         for sample in samples
