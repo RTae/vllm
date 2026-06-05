@@ -118,9 +118,9 @@ python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 100 \
+  --num-samples 4 \
   --speculative-decoding \
-  --draft-model /workspace/.hf_home/qwen3-vl-2b/ \
+  --draft-model /workspace/.hf_home/qwen3-vl-2b-merged/ \
   --num-speculative-tokens 5 \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching

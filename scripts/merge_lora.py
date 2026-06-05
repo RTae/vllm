@@ -52,7 +52,7 @@ def main():
     args = parse_args()
 
     from peft import PeftModel
-    from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
+    from transformers import AutoProcessor, AutoModelForImageTextToText
 
     dtype_map = {
         "bfloat16": torch.bfloat16,
@@ -65,21 +65,12 @@ def main():
     output_path.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading base model from {args.base_model} ...")
-    # Use the auto class so this works for both 2B and 8B
-    from transformers import AutoModelForCausalLM
-    try:
-        base_model = Qwen2VLForConditionalGeneration.from_pretrained(
-            args.base_model,
-            torch_dtype=torch_dtype,
-            low_cpu_mem_usage=True,
-        )
-    except Exception:
-        base_model = AutoModelForCausalLM.from_pretrained(
-            args.base_model,
-            torch_dtype=torch_dtype,
-            low_cpu_mem_usage=True,
-            trust_remote_code=True,
-        )
+    base_model = AutoModelForImageTextToText.from_pretrained(
+        args.base_model,
+        dtype=torch_dtype,
+        low_cpu_mem_usage=True,
+        trust_remote_code=True,
+    )
 
     print(f"Loading LoRA adapter from {args.adapter} ...")
     peft_model = PeftModel.from_pretrained(base_model, args.adapter)
