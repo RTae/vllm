@@ -1,0 +1,87 @@
+
+  ▶ BASELINE
+  ✓ 00_baseline_default  wall=107s
+    throughput       : 0.505 samples/s
+    e2e latency p50  : 8.3807s
+    e2e latency p95  : 18.9122s
+    TTFT mean        : 6.5317s
+    prefill time mean: 3.0953s
+    prefill time p50 : 2.955s
+    decode time mean : 2.8948s
+    decode time p50  : 2.596s
+    tokens/s mean    : 2.71
+    total gen tokens : 328
+
+  ▶ ATTENTION BACKENDS
+  ✓ 01_attn_flash_no_apc  wall=103s
+    throughput       : 0.535 samples/s
+    e2e latency p50  : 6.8114s
+    e2e latency p95  : 17.0767s
+    TTFT mean        : 5.4737s
+    prefill time mean: 2.508s
+    prefill time p50 : 2.446s
+    decode time mean : 2.4973s
+    decode time p50  : 2.0955s
+    tokens/s mean    : 3.39
+    total gen tokens : 361
+
+  ▶ AUTOMATIC PREFIX CACHING
+  ✓ 02_apc_triton_on  wall=102s
+    throughput       : 0.619 samples/s
+    e2e latency p50  : 4.5855s
+    e2e latency p95  : 15.3402s
+    TTFT mean        : 3.8658s
+    prefill time mean: 2.3618s
+    prefill time p50 : 2.6883s
+    decode time mean : 1.9873s
+    decode time p50  : 1.7415s
+    tokens/s mean    : 4.19
+    total gen tokens : 328
+
+  ▶ SPECULATIVE DECODING (Triton, no APC)
+  ✓ 03a_sd_ngram_k5  wall=160s
+    throughput       : 0.382 samples/s
+    e2e latency p50  : 12.116s
+    e2e latency p95  : 22.5885s
+    TTFT mean        : 9.0743s
+    prefill time mean: 2.5358s
+    prefill time p50 : 2.0122s
+    decode time mean : 4.0907s
+    decode time p50  : 3.1719s
+    tokens/s mean    : 2.06
+    total gen tokens : 361
+  ✓ 03b_sd_draft_2b_k5  wall=209s
+    throughput       : 0.297 samples/s
+    e2e latency p50  : 13.5456s
+    e2e latency p95  : 28.2697s
+    TTFT mean        : 10.4444s
+    prefill time mean: 2.3048s
+    prefill time p50 : 2.1691s
+    decode time mean : 5.2705s
+    decode time p50  : 2.8361s
+    tokens/s mean    : 1.62
+    total gen tokens : 361
+  ✓ 03c_sd_eagle3_k5  wall=187s
+    throughput       : 0.418 samples/s
+    e2e latency p50  : 10.7456s
+    e2e latency p95  : 20.9557s
+    TTFT mean        : 9.2629s
+    prefill time mean: 3.6372s
+    prefill time p50 : 3.2373s
+    decode time mean : 2.6384s
+    decode time p50  : 1.8668s
+    tokens/s mean    : 2.35
+    total gen tokens : 362
+
+  ▶ APPLY ALL (Eagle3 + FlashAttention + APC)
+  ✓ 04_all_eagle3_flash_apc  wall=163s
+    throughput       : 0.492 samples/s
+    e2e latency p50  : 8.3371s
+    e2e latency p95  : 18.435s
+    TTFT mean        : 8.2175s
+    prefill time mean: 3.9054s
+    prefill time p50 : 3.696s
+    decode time mean : 1.4749s
+    decode time p50  : 0.7743s
+    tokens/s mean    : 2.92
+    total gen tokens : 361
