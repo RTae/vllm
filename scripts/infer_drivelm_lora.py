@@ -105,6 +105,26 @@ def parse_args():
         help="Enable speculative decoding using a smaller draft model.",
     )
     parser.add_argument(
+        "--ngram",
+        action="store_true",
+        help=(
+            "Enable n-gram speculative decoding. No draft model needed. "
+            "Uses repeated n-grams from the prompt/context to propose tokens."
+        ),
+    )
+    parser.add_argument(
+        "--ngram-prompt-lookup-max",
+        type=int,
+        default=5,
+        help="Maximum n-gram window size for n-gram speculative decoding.",
+    )
+    parser.add_argument(
+        "--ngram-prompt-lookup-min",
+        type=int,
+        default=1,
+        help="Minimum n-gram window size for n-gram speculative decoding.",
+    )
+    parser.add_argument(
         "--draft-model",
         type=str,
         default=None,
@@ -315,6 +335,9 @@ def main():
     max_lora_rank = adapter_config.get("r", 64)
     speculative_config = None
 
+    if args.speculative_decoding and args.ngram:
+        raise ValueError("--speculative-decoding and --ngram are mutually exclusive.")
+
     if args.speculative_decoding:
         draft_model = resolve_draft_model(base_model, args.draft_model)
         speculative_config = {
@@ -323,6 +346,13 @@ def main():
             "num_speculative_tokens": args.num_speculative_tokens,
             "draft_tensor_parallel_size": args.draft_tensor_parallel_size,
             "max_model_len": args.max_model_len,
+        }
+    elif args.ngram:
+        speculative_config = {
+            "method": "ngram",
+            "num_speculative_tokens": args.num_speculative_tokens,
+            "prompt_lookup_max": args.ngram_prompt_lookup_max,
+            "prompt_lookup_min": args.ngram_prompt_lookup_min,
         }
 
     try:

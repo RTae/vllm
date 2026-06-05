@@ -80,7 +80,7 @@ python scripts/create_drivelm_nuscenes.py
 
 2. Download models:
 
-```bashbash
+```bash
 ./scripts/download_models.sh
 ```
 
@@ -96,6 +96,18 @@ python scripts/infer_drivelm_lora.py \
 ```
 
 ### Run with speculative decoding
+#### With N-gram proposer
+```bash
+python scripts/infer_drivelm_lora.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 4 \
+  --ngram \
+  --num-speculative-tokens 5
+```
+
+#### With draft model
 ```bash
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
