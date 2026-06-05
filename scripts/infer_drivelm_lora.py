@@ -567,6 +567,9 @@ def main():
         gpu_work = round(prefill_time + decode_time, 4) if prefill_time is not None and decode_time is not None else None
         # tokens/s per GPU work (excludes queue wait) — the true per-request GPU throughput
         tps = round(gen_tokens / gpu_work, 2) if gpu_work and gpu_work > 0 else None
+        # TPOT: time per output token (decode phase only, excluding first token)
+        # Standard LLM inference metric equivalent to mean ITL
+        tpot = round(decode_time / (gen_tokens - 1), 4) if decode_time and gen_tokens > 1 else None
 
         record = {
             "id": meta["id"],
@@ -577,6 +580,7 @@ def main():
             "first_token_latency_s": ttft,
             "request_compute_time_s": gpu_work,
             "decode_time_s": decode_time,
+            "tpot_s": tpot,
             "prefill_time_s": prefill_time,
             "tokens_per_second": tps,
         }
@@ -592,6 +596,7 @@ def main():
         tps_list = [r["tokens_per_second"] for r in valid if r["tokens_per_second"] is not None]
         ttfts = [r["first_token_latency_s"] for r in valid if r["first_token_latency_s"] is not None]
         decode_times = [r["decode_time_s"] for r in valid if r["decode_time_s"] is not None]
+        tpots = [r["tpot_s"] for r in valid if r["tpot_s"] is not None]
         prefill_times = [r["prefill_time_s"] for r in valid if r["prefill_time_s"] is not None]
         gpu_works = [r["request_compute_time_s"] for r in valid if r["request_compute_time_s"] is not None]
         agg = {
@@ -605,6 +610,8 @@ def main():
             "request_compute_time_p50_s": round(statistics.median(gpu_works), 4) if gpu_works else None,
             "decode_time_mean_s": round(statistics.mean(decode_times), 4) if decode_times else None,
             "decode_time_p50_s": round(statistics.median(decode_times), 4) if decode_times else None,
+            "tpot_mean_s": round(statistics.mean(tpots), 4) if tpots else None,
+            "tpot_p50_s": round(statistics.median(tpots), 4) if tpots else None,
             "prefill_time_mean_s": round(statistics.mean(prefill_times), 4) if prefill_times else None,
             "prefill_time_p50_s": round(statistics.median(prefill_times), 4) if prefill_times else None,
             "tokens_per_second_mean": round(statistics.mean(tps_list), 2) if tps_list else None,
@@ -622,7 +629,7 @@ def main():
             print(f"reference: {rec['reference']}")
         print(f"prediction: {rec['prediction']}")
         if rec["e2e_latency_s"] is not None:
-            print(f"[metrics] e2e={rec['e2e_latency_s']}s  compute={rec['request_compute_time_s']}s  ttft={rec['first_token_latency_s']}s  prefill={rec['prefill_time_s']}s  decode={rec['decode_time_s']}s  gen_tokens={rec['num_generation_tokens']}  tps={rec['tokens_per_second']}")
+            print(f"[metrics] e2e={rec['e2e_latency_s']}s  ttft={rec['first_token_latency_s']}s  tpot={rec['tpot_s']}s  decode={rec['decode_time_s']}s  gen_tokens={rec['num_generation_tokens']}  tps={rec['tokens_per_second']}")
 
     if agg:
         print("\n" + "=" * 80)
@@ -649,6 +656,10 @@ def main():
             print(f"  decode time mean : {agg['decode_time_mean_s']}s")
         if agg.get('decode_time_p50_s'):
             print(f"  decode time p50  : {agg['decode_time_p50_s']}s")
+        if agg.get('tpot_mean_s'):
+            print(f"  TPOT mean        : {agg['tpot_mean_s']}s  (decode/(tokens-1), ≈ ITL mean)")
+        if agg.get('tpot_p50_s'):
+            print(f"  TPOT p50         : {agg['tpot_p50_s']}s")
         print(f"  total gen tokens : {agg['total_gen_tokens']}")
 
     # ── Save to JSON if requested ─────────────────────────────────────────────

@@ -62,6 +62,8 @@ print(f"    prefill time mean: {a.get('prefill_time_mean_s')}s")
 print(f"    prefill time p50 : {a.get('prefill_time_p50_s')}s")
 print(f"    decode time mean : {a.get('decode_time_mean_s')}s")
 print(f"    decode time p50  : {a.get('decode_time_p50_s')}s")
+print(f"    TPOT mean        : {a.get('tpot_mean_s')}s  (~ITL)")
+print(f"    TPOT p50         : {a.get('tpot_p50_s')}s")
 print(f"    tokens/s mean    : {a.get('tokens_per_second_mean')}")
 print(f"    total gen tokens : {a.get('total_gen_tokens')}")
 PYEOF
