@@ -78,10 +78,10 @@ COMMON=(
 )
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ========================================================================
 # Section 1: Attention Backends
 # Fixed: no APC so only the attention kernel changes.
-# ════════════════════════════════════════════════════════════════════════════════
+# ========================================================================
 print_section() { echo ""; echo ""; echo "  ▶ $1"; echo "" | tee -a "$SUMMARY_FILE"; echo "  ▶ $1" >> "$SUMMARY_FILE"; }
 
 print_section "BASELINE"
@@ -92,28 +92,33 @@ run_experiment "00_baseline_default" \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching
 
+# ========================================================================
+# Section 1: Attention Backends
+# Fixed: No APC so only the attention kernel changes and also no Sepculative Decoding to isolate the effect of attention backends.
+# ========================================================================
+
 print_section "ATTENTION BACKENDS"
 
 # 1. FlashAttention
-run_experiment "01b_attn_flash_no_apc" \
+run_experiment "01_attn_flash_no_apc" \
   "${COMMON[@]}" \
   --no-prefix-caching
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ========================================================================
 # Section 2: Automatic Prefix Caching
 # Fixed: Triton backend so only APC changes.
-# ════════════════════════════════════════════════════════════════════════════════
+# ========================================================================
 print_section "AUTOMATIC PREFIX CACHING"
 
 # 2. Triton – APC enabled
-run_experiment "02b_apc_triton_on" \
+run_experiment "02_apc_triton_on" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ========================================================================
 # Section 3: Speculative Decoding
 # Fixed: Triton + no APC so only the SD strategy changes.
-# ════════════════════════════════════════════════════════════════════════════════
+# ========================================================================
 print_section "SPECULATIVE DECODING (Triton, no APC)"
 
 SD_BASE=(
@@ -123,7 +128,7 @@ SD_BASE=(
 )
 
 # 3a. N-gram
-run_experiment "03b_sd_ngram_k${NUM_SPEC_TOKENS}" \
+run_experiment "03a_sd_ngram_k${NUM_SPEC_TOKENS}" \
   "${SD_BASE[@]}" \
   --ngram \
   --num-speculative-tokens "$NUM_SPEC_TOKENS"
