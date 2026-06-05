@@ -29,6 +29,7 @@ run_experiment() {
   local name="$1"
   shift
   local log_file="$RESULTS_DIR/${name}.log"
+  local metrics_file="$RESULTS_DIR/${name}_metrics.json"
 
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -38,14 +39,27 @@ run_experiment() {
   local start_ts
   start_ts=$(date +%s)
 
-  "$PYTHON" "$INFER" "$@" 2>&1 | tee "$log_file"
+  "$PYTHON" "$INFER" "$@" --output-metrics "$metrics_file" 2>&1 | tee "$log_file"
 
   local end_ts exit_code=${PIPESTATUS[0]}
   end_ts=$(date +%s)
   local elapsed=$(( end_ts - start_ts ))
 
   if [[ $exit_code -eq 0 ]]; then
-    echo "  ✓ $name completed in ${elapsed}s" | tee -a "$SUMMARY_FILE"
+    echo "  ✓ $name  wall=${elapsed}s" | tee -a "$SUMMARY_FILE"
+    if [[ -f "$metrics_file" ]]; then
+      python3 - "$metrics_file" >> "$SUMMARY_FILE" <<'PYEOF'
+import json, sys
+data = json.load(open(sys.argv[1]))
+a = data.get("aggregate", {})
+print(f"    throughput       : {a.get('throughput_samples_per_s')} samples/s")
+print(f"    e2e latency p50  : {a.get('e2e_latency_p50_s')}s")
+print(f"    e2e latency p95  : {a.get('e2e_latency_p95_s')}s")
+print(f"    tokens/s mean    : {a.get('tokens_per_second_mean')}")
+print(f"    TTFT mean        : {a.get('ttft_mean_s')}s")
+print(f"    total gen tokens : {a.get('total_gen_tokens')}")
+PYEOF
+    fi
   else
     echo "  ✗ $name FAILED after ${elapsed}s (exit $exit_code)" | tee -a "$SUMMARY_FILE"
   fi

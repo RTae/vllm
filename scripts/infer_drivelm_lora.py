@@ -133,6 +133,13 @@ def parse_args():
         help="Enable speculative decoding using a smaller draft model.",
     )
     parser.add_argument(
+        "--output-metrics",
+        type=str,
+        default=None,
+        metavar="JSON_PATH",
+        help="Path to save per-request and aggregate metrics as JSON.",
+    )
+    parser.add_argument(
         "--ngram",
         action="store_true",
         help=(
@@ -492,20 +499,93 @@ def main():
             }
         )
 
+    import time
+    t_generate_start = time.perf_counter()
     outputs = llm.generate(
         inputs,
         sampling_params=sampling_params,
         lora_request=[lora_request] * len(inputs),
     )
+    t_generate_end = time.perf_counter()
+    total_wall_time = t_generate_end - t_generate_start
 
+    # ── Collect metrics ───────────────────────────────────────────────────────
+    records = []
     for meta, output in zip(metadata, outputs, strict=True):
+        m = output.metrics  # RequestStateStats or None
+        gen_tokens = len(output.outputs[0].token_ids)
+        record = {
+            "id": meta["id"],
+            "num_images": meta["num_images"],
+            "num_prompt_tokens": int(m.num_prompt_tokens) if m else None,
+            "num_generation_tokens": gen_tokens,
+            "e2e_latency_s": round(m.e2e_latency, 4) if m else None,
+            "first_token_latency_s": round(m.first_token_latency, 4) if m else None,
+            "decode_time_s": round(m.decode_time, 4) if m else None,
+            "prefill_time_s": round(m.prefill_time, 4) if m else None,
+            "tokens_per_second": round(
+                gen_tokens / m.e2e_latency, 2
+            ) if m and m.e2e_latency > 0 else None,
+        }
+        records.append({**record, "question": meta["question"], "reference": meta["reference"],
+                        "prediction": output.outputs[0].text.strip()})
+
+    # ── Aggregate ─────────────────────────────────────────────────────────────
+    valid = [r for r in records if r["e2e_latency_s"] is not None]
+    agg = {}
+    if valid:
+        import statistics
+        latencies = [r["e2e_latency_s"] for r in valid]
+        tps_list = [r["tokens_per_second"] for r in valid if r["tokens_per_second"] is not None]
+        ttfts = [r["first_token_latency_s"] for r in valid if r["first_token_latency_s"] is not None]
+        agg = {
+            "num_samples": len(valid),
+            "total_wall_time_s": round(total_wall_time, 2),
+            "throughput_samples_per_s": round(len(valid) / total_wall_time, 3),
+            "e2e_latency_mean_s": round(statistics.mean(latencies), 4),
+            "e2e_latency_p50_s": round(statistics.median(latencies), 4),
+            "e2e_latency_p95_s": round(sorted(latencies)[int(len(latencies) * 0.95)], 4) if len(latencies) > 1 else latencies[0],
+            "tokens_per_second_mean": round(statistics.mean(tps_list), 2) if tps_list else None,
+            "ttft_mean_s": round(statistics.mean(ttfts), 4) if ttfts else None,
+            "total_gen_tokens": sum(r["num_generation_tokens"] for r in valid),
+        }
+
+    # ── Print per-sample outputs and summary ─────────────────────────────────
+    for rec in records:
         print("=" * 80)
-        print(f"id: {meta['id']}")
-        print(f"images: {meta['num_images']}")
-        print(f"question: {meta['question']}")
-        if meta["reference"] is not None:
-            print(f"reference: {meta['reference']}")
-        print(f"prediction: {output.outputs[0].text.strip()}")
+        print(f"id: {rec['id']}")
+        print(f"images: {rec['num_images']}")
+        print(f"question: {rec['question']}")
+        if rec["reference"] is not None:
+            print(f"reference: {rec['reference']}")
+        print(f"prediction: {rec['prediction']}")
+        if rec["e2e_latency_s"] is not None:
+            print(f"[metrics] e2e={rec['e2e_latency_s']}s  ttft={rec['first_token_latency_s']}s  gen_tokens={rec['num_generation_tokens']}  tps={rec['tokens_per_second']}")
+
+    if agg:
+        print("\n" + "=" * 80)
+        print("AGGREGATE METRICS")
+        print(f"  samples          : {agg['num_samples']}")
+        print(f"  wall time        : {agg['total_wall_time_s']}s")
+        print(f"  throughput       : {agg['throughput_samples_per_s']} samples/s")
+        print(f"  e2e latency mean : {agg['e2e_latency_mean_s']}s")
+        print(f"  e2e latency p50  : {agg['e2e_latency_p50_s']}s")
+        print(f"  e2e latency p95  : {agg['e2e_latency_p95_s']}s")
+        if agg['tokens_per_second_mean']:
+            print(f"  tokens/s mean    : {agg['tokens_per_second_mean']}")
+        if agg['ttft_mean_s']:
+            print(f"  TTFT mean        : {agg['ttft_mean_s']}s")
+        print(f"  total gen tokens : {agg['total_gen_tokens']}")
+
+    # ── Save to JSON if requested ─────────────────────────────────────────────
+    if args.output_metrics:
+        import json as _json
+        out_path = Path(args.output_metrics)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"aggregate": agg, "per_request": records}
+        with out_path.open("w", encoding="utf-8") as f:
+            _json.dump(payload, f, indent=2, ensure_ascii=False)
+        print(f"\nMetrics saved to {out_path}")
 
 
 if __name__ == "__main__":
