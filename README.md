@@ -87,23 +87,23 @@ python scripts/create_drivelm_nuscenes.py
 
 ## Inference
 
-### Run baseline
+### Baseline
 ```bash
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 4 
+  --num-samples 10
 ```
 
-### Run with speculative decoding
+### Speculative decoding
 #### With N-gram proposer
 ```bash
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 4 \
+  --num-samples 10 \
   --ngram \
   --num-speculative-tokens 5
 ```
@@ -114,8 +114,20 @@ python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 4 \
+  --num-samples 10 \
   --speculative-decoding \
   --draft-model /workspace/.hf_home/qwen3-vl-2b/ \
   --num-speculative-tokens 5
+```
+
+### Attention Backends
+#### With Sparge Attention
+```bash
+python scripts/infer_drivelm_lora.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 10 \
+  --sparge-attn \
+  --sparge-topk 0.5
 ```

@@ -100,6 +100,23 @@ def parse_args():
         help="Enable trust_remote_code for base model loading.",
     )
     parser.add_argument(
+        "--sparge-attn",
+        action="store_true",
+        help=(
+            "Use SpargeAttention for prefill (sparse) and FlashAttention for "
+            "decode. Requires spas_sage_attn to be installed."
+        ),
+    )
+    parser.add_argument(
+        "--sparge-topk",
+        type=float,
+        default=0.5,
+        help=(
+            "Fraction of KV blocks retained per head during SpargeAttention "
+            "prefill. 1.0 = dense, 0.5 = keep 50%% of blocks (default)."
+        ),
+    )
+    parser.add_argument(
         "--speculative-decoding",
         action="store_true",
         help="Enable speculative decoding using a smaller draft model.",
@@ -335,6 +352,9 @@ def main():
     max_lora_rank = adapter_config.get("r", 64)
     speculative_config = None
 
+    if args.sparge_attn:
+        os.environ["SPARGE_ATTN_TOPK"] = str(args.sparge_topk)
+
     if args.speculative_decoding and args.ngram:
         raise ValueError("--speculative-decoding and --ngram are mutually exclusive.")
 
@@ -395,6 +415,12 @@ def main():
         limit_mm_per_prompt={"image": max_images},
         trust_remote_code=args.trust_remote_code,
         speculative_config=speculative_config,
+        attention_backend=(
+            "SPARGE_ATTN" if args.sparge_attn else None
+        ),
+        # SpargeAttention uses Python-level per-sequence iteration in its
+        # forward pass and is incompatible with torch.compile/CUDA graphs.
+        enforce_eager=args.sparge_attn or False,
     )
     sampling_params = SamplingParams(
         temperature=args.temperature,

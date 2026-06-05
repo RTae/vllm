@@ -78,6 +78,7 @@ class AttentionBackendEnum(Enum, metaclass=_AttentionBackendEnumMeta):
     )
     FLASH_ATTN_MLA = "vllm.v1.attention.backends.mla.flashattn_mla.FlashAttnMLABackend"
     NO_ATTENTION = "vllm.v1.attention.backends.no_attention.NoAttentionBackend"
+    SPARGE_ATTN = "vllm.v1.attention.backends.sparge_attn.SpargeAttentionBackend"
     FLEX_ATTENTION = "vllm.v1.attention.backends.flex_attention.FlexAttentionBackend"
     ROCM_AITER_UNIFIED_ATTN = (
         "vllm.v1.attention.backends.rocm_aiter_unified_attn."
