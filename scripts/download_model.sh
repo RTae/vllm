@@ -7,5 +7,6 @@ if [ -z "$HF_TOKEN" ]; then
   exit 1
 fi
 
-hf download Qwen/Qwen3-VL-8B-Instruct --local-dir /workspace/.hf_home/qwen3-vl-8b-complete
-hf download Qwen/Qwen3-VL-2B-Instruct --local-dir /workspace/.hf_home/qwen3-vl-2b-complete
+hf download Qwen/Qwen3-VL-8B-Instruct --local-dir /workspace/.hf_home/qwen3-vl-8b
+hf download Qwen/Qwen3-VL-2B-Instruct --local-dir /workspace/.hf_home/qwen3-vl-2b
+hf download taobao-mnn/Qwen3-VL-2B-Instruct-Eagle3 --local-dir /workspace/.hf_home/qwen3-vl-2b-eagle3
