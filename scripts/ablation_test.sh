@@ -79,54 +79,85 @@ COMMON=(
   --num-samples  "$NUM_SAMPLES"
 )
 
-
-# ========================================================================
-# Section 1: Attention Backends
-# Fixed: no APC so only the attention kernel changes.
-# ========================================================================
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 0: Baseline (Triton, all caches off)
+# Everything else is compared against this.
+# ════════════════════════════════════════════════════════════════════════════════
 print_section() { echo ""; echo ""; echo "  ▶ $1"; echo "" | tee -a "$SUMMARY_FILE"; echo "  ▶ $1" >> "$SUMMARY_FILE"; }
 
-print_section "BASELINE"
+print_section "BASELINE (Triton, all caches off)"
 
-# 0. True baseline – vLLM defaults (Triton, no APC, no SD)
-run_experiment "00_baseline_default" \
+NO_CACHE=(
+  --attention-backend TRITON_ATTN
+  --no-prefix-caching
+  --disable-mm-preprocessor-cache
+  --disable-chunked-mm-input
+)
+
+run_experiment "00_baseline" \
+  "${COMMON[@]}" \
+  "${NO_CACHE[@]}"
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 1: Attention Backends
+# Fixed: all caches off, no SD — isolates kernel differences.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "ATTENTION BACKENDS (all caches off)"
+
+# 1. FlashAttention (default backend)
+run_experiment "01_attn_flash" \
+  "${COMMON[@]}" \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 2: Caching Ablation
+# Fixed: Triton backend, no SD — add one cache at a time.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "CACHING ABLATION (Triton, no SD)"
+
+# 2a. APC only
+run_experiment "02a_cache_apc_only" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN \
-  --no-prefix-caching
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
 
-# ========================================================================
-# Section 1: Attention Backends
-# Fixed: No APC so only the attention kernel changes and also no Sepculative Decoding to isolate the effect of attention backends.
-# ========================================================================
-
-print_section "ATTENTION BACKENDS"
-
-# 1. FlashAttention
-run_experiment "01_attn_flash_no_apc" \
+# 2b. MM preprocessor cache only
+run_experiment "02b_cache_mm_preprocessor_only" \
   "${COMMON[@]}" \
-  --no-prefix-caching
+  --attention-backend TRITON_ATTN \
+  --no-prefix-caching \
+  --disable-chunked-mm-input
 
-# ========================================================================
-# Section 2: Automatic Prefix Caching
-# Fixed: Triton backend so only APC changes.
-# ========================================================================
-print_section "AUTOMATIC PREFIX CACHING"
+# 2c. Chunked MM input only
+run_experiment "02c_cache_chunked_mm_only" \
+  "${COMMON[@]}" \
+  --attention-backend TRITON_ATTN \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache
 
-# 2. Triton – APC enabled
-run_experiment "02_apc_triton_on" \
+# 2d. APC + MM preprocessor cache
+run_experiment "02d_cache_apc_and_mm" \
+  "${COMMON[@]}" \
+  --attention-backend TRITON_ATTN \
+  --disable-chunked-mm-input
+
+# 2e. All caches enabled
+run_experiment "02e_cache_all" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN
 
-# ========================================================================
+# ════════════════════════════════════════════════════════════════════════════════
 # Section 3: Speculative Decoding
-# Fixed: Triton + no APC so only the SD strategy changes.
-# ========================================================================
-print_section "SPECULATIVE DECODING (Triton, no APC)"
+# Fixed: Triton + all caches off — isolates SD strategy.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "SPECULATIVE DECODING (Triton, all caches off)"
 
 SD_BASE=(
   "${COMMON[@]}"
-  --attention-backend TRITON_ATTN
-  --no-prefix-caching
+  "${NO_CACHE[@]}"
 )
 
 # 3a. N-gram
@@ -156,11 +187,14 @@ else
   echo "  ⚠  SKIP 03c_sd_eagle3: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 
-# ── Apply all ─────────────────────────────────────────────────────────────────
-print_section "APPLY ALL (Eagle3 + FlashAttention + APC)"
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 4: Apply all
+# EAGLE3 + FlashAttention + all caches
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "APPLY ALL (Eagle3 + FlashAttention + all caches)"
 
 if [[ -d "$EAGLE3_MODEL" ]]; then
-  run_experiment "04_all_eagle3_flash_apc" \
+  run_experiment "04_all_eagle3_flash_all_caches" \
     "${COMMON[@]}" \
     --eagle3 "$EAGLE3_MODEL" \
     --num-speculative-tokens "$NUM_SPEC_TOKENS"

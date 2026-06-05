@@ -94,7 +94,9 @@ python scripts/infer_drivelm_lora.py \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 100 \
   --attention-backend TRITON_ATTN \
-  --no-prefix-caching
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
 ```
 
 ### Speculative decoding
@@ -108,9 +110,10 @@ python scripts/infer_drivelm_lora.py \
   --ngram \
   --num-speculative-tokens 5 \
   --attention-backend TRITON_ATTN \
-  --no-prefix-caching
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
 ```
-
 
 #### With draft model
 ```bash
@@ -123,12 +126,14 @@ python scripts/infer_drivelm_lora.py \
   --draft-model /workspace/.hf_home/qwen3-vl-2b-merged/ \
   --num-speculative-tokens 5 \
   --attention-backend TRITON_ATTN \
-  --no-prefix-caching
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
 ```
 
 #### With EAGLE proposer
 ```bash
-python /workspace/vllm/scripts/infer_drivelm_lora.py \
+python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
@@ -136,7 +141,9 @@ python /workspace/vllm/scripts/infer_drivelm_lora.py \
   --eagle3 /workspace/.hf_home/qwen3-vl-8b-eagle3 \
   --num-speculative-tokens 5 \
   --attention-backend TRITON_ATTN \
-  --no-prefix-caching
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
 ```
 
 ### Attention Backends
@@ -148,21 +155,38 @@ python scripts/infer_drivelm_lora.py \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 100 \
-  --no-prefix-caching
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
 ```
 
-<!-- #### SpargeAttention (sparse prefill)
+### Caching
+
+#### APC only
 ```bash
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 100 \
-  --sparge-attn \
-  --sparge-topk 0.5
-``` -->
+  --attention-backend TRITON_ATTN \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
+```
 
-### Automatic Prefix Caching
+#### MM preprocessor cache only
+```bash
+python scripts/infer_drivelm_lora.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 100 \
+  --attention-backend TRITON_ATTN \
+  --no-prefix-caching \
+  --disable-chunked-mm-input
+```
+
+#### All caches enabled
 ```bash
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
@@ -170,10 +194,10 @@ python scripts/infer_drivelm_lora.py \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 100 \
   --attention-backend TRITON_ATTN
-``` 
+```
 
 ### Apply all
-Apply all optimizations together, including EAGLE proposer, FlashAttention backend, and automatic prefix caching:
+Apply all optimizations together, including EAGLE proposer, FlashAttention backend, and all caches:
 ```bash
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
