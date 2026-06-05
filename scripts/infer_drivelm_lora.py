@@ -127,6 +127,15 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--no-prefix-caching",
+        action="store_true",
+        help=(
+            "Disable Automatic Prefix Caching (APC). "
+            "APC is enabled by default and reuses KV cache for shared prompt prefixes. "
+            "Disable to benchmark without APC or when prompts share no prefix."
+        ),
+    )
+    parser.add_argument(
         "--speculative-decoding",
         action="store_true",
         help="Enable speculative decoding using a smaller draft model.",
@@ -472,6 +481,8 @@ def main():
         enforce_eager=args.sparge_attn or False,
         # Enable per-request metrics so output.metrics is populated.
         disable_log_stats=False,
+        # APC is on by default; --no-prefix-caching turns it off.
+        enable_prefix_caching=not args.no_prefix_caching,
     )
     sampling_params = SamplingParams(
         temperature=args.temperature,
