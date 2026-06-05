@@ -544,7 +544,9 @@ def main():
             e2e = round(ttft + decode_time, 4)
         if m and m.scheduled_ts and m.first_token_ts:
             prefill_time = round(m.first_token_ts - m.scheduled_ts, 4)
-        tps = round(gen_tokens / e2e, 2) if e2e and e2e > 0 else None
+        gpu_work = round(prefill_time + decode_time, 4) if prefill_time is not None and decode_time is not None else None
+        # tokens/s per GPU work (excludes queue wait) — the true per-request GPU throughput
+        tps = round(gen_tokens / gpu_work, 2) if gpu_work and gpu_work > 0 else None
 
         record = {
             "id": meta["id"],
@@ -553,6 +555,7 @@ def main():
             "num_generation_tokens": gen_tokens,
             "e2e_latency_s": e2e,
             "first_token_latency_s": ttft,
+            "request_compute_time_s": gpu_work,
             "decode_time_s": decode_time,
             "prefill_time_s": prefill_time,
             "tokens_per_second": tps,
@@ -570,6 +573,7 @@ def main():
         ttfts = [r["first_token_latency_s"] for r in valid if r["first_token_latency_s"] is not None]
         decode_times = [r["decode_time_s"] for r in valid if r["decode_time_s"] is not None]
         prefill_times = [r["prefill_time_s"] for r in valid if r["prefill_time_s"] is not None]
+        gpu_works = [r["request_compute_time_s"] for r in valid if r["request_compute_time_s"] is not None]
         agg = {
             "num_samples": len(valid),
             "total_wall_time_s": round(total_wall_time, 2),
@@ -577,6 +581,8 @@ def main():
             "e2e_latency_mean_s": round(statistics.mean(latencies), 4),
             "e2e_latency_p50_s": round(statistics.median(latencies), 4),
             "e2e_latency_p95_s": round(sorted(latencies)[min(int(len(latencies) * 0.95), len(latencies) - 1)], 4) if latencies else None,
+            "request_compute_time_mean_s": round(statistics.mean(gpu_works), 4) if gpu_works else None,
+            "request_compute_time_p50_s": round(statistics.median(gpu_works), 4) if gpu_works else None,
             "decode_time_mean_s": round(statistics.mean(decode_times), 4) if decode_times else None,
             "decode_time_p50_s": round(statistics.median(decode_times), 4) if decode_times else None,
             "prefill_time_mean_s": round(statistics.mean(prefill_times), 4) if prefill_times else None,
@@ -596,7 +602,7 @@ def main():
             print(f"reference: {rec['reference']}")
         print(f"prediction: {rec['prediction']}")
         if rec["e2e_latency_s"] is not None:
-            print(f"[metrics] e2e={rec['e2e_latency_s']}s  ttft={rec['first_token_latency_s']}s  prefill={rec['prefill_time_s']}s  decode={rec['decode_time_s']}s  gen_tokens={rec['num_generation_tokens']}  tps={rec['tokens_per_second']}")
+            print(f"[metrics] e2e={rec['e2e_latency_s']}s  compute={rec['request_compute_time_s']}s  ttft={rec['first_token_latency_s']}s  prefill={rec['prefill_time_s']}s  decode={rec['decode_time_s']}s  gen_tokens={rec['num_generation_tokens']}  tps={rec['tokens_per_second']}")
 
     if agg:
         print("\n" + "=" * 80)
@@ -607,6 +613,10 @@ def main():
         print(f"  e2e latency mean : {agg['e2e_latency_mean_s']}s")
         print(f"  e2e latency p50  : {agg['e2e_latency_p50_s']}s")
         print(f"  e2e latency p95  : {agg['e2e_latency_p95_s']}s")
+        if agg.get('request_compute_time_mean_s'):
+            print(f"  compute time mean: {agg['request_compute_time_mean_s']}s  (prefill + decode, no queue wait)")
+        if agg.get('request_compute_time_p50_s'):
+            print(f"  compute time p50 : {agg['request_compute_time_p50_s']}s")
         if agg['tokens_per_second_mean']:
             print(f"  tokens/s mean    : {agg['tokens_per_second_mean']}")
         if agg['ttft_mean_s']:
