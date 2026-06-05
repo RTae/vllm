@@ -526,10 +526,13 @@ def main():
         #   first_token_latency + (last_token_ts - first_token_ts)
         e2e = None
         decode_time = None
+        prefill_time = None
         ttft = round(m.first_token_latency, 4) if m and m.first_token_latency else None
         if m and m.first_token_ts and m.last_token_ts and ttft is not None:
             decode_time = round(m.last_token_ts - m.first_token_ts, 4)
             e2e = round(ttft + decode_time, 4)
+        if m and m.scheduled_ts and m.first_token_ts:
+            prefill_time = round(m.first_token_ts - m.scheduled_ts, 4)
         tps = round(gen_tokens / e2e, 2) if e2e and e2e > 0 else None
 
         record = {
@@ -540,7 +543,7 @@ def main():
             "e2e_latency_s": e2e,
             "first_token_latency_s": ttft,
             "decode_time_s": decode_time,
-            "prefill_time_s": None,
+            "prefill_time_s": prefill_time,
             "tokens_per_second": tps,
         }
         records.append({**record, "question": meta["question"], "reference": meta["reference"],
@@ -554,6 +557,8 @@ def main():
         latencies = [r["e2e_latency_s"] for r in valid]
         tps_list = [r["tokens_per_second"] for r in valid if r["tokens_per_second"] is not None]
         ttfts = [r["first_token_latency_s"] for r in valid if r["first_token_latency_s"] is not None]
+        decode_times = [r["decode_time_s"] for r in valid if r["decode_time_s"] is not None]
+        prefill_times = [r["prefill_time_s"] for r in valid if r["prefill_time_s"] is not None]
         agg = {
             "num_samples": len(valid),
             "total_wall_time_s": round(total_wall_time, 2),
@@ -561,6 +566,10 @@ def main():
             "e2e_latency_mean_s": round(statistics.mean(latencies), 4),
             "e2e_latency_p50_s": round(statistics.median(latencies), 4),
             "e2e_latency_p95_s": round(sorted(latencies)[min(int(len(latencies) * 0.95), len(latencies) - 1)], 4) if latencies else None,
+            "decode_time_mean_s": round(statistics.mean(decode_times), 4) if decode_times else None,
+            "decode_time_p50_s": round(statistics.median(decode_times), 4) if decode_times else None,
+            "prefill_time_mean_s": round(statistics.mean(prefill_times), 4) if prefill_times else None,
+            "prefill_time_p50_s": round(statistics.median(prefill_times), 4) if prefill_times else None,
             "tokens_per_second_mean": round(statistics.mean(tps_list), 2) if tps_list else None,
             "ttft_mean_s": round(statistics.mean(ttfts), 4) if ttfts else None,
             "total_gen_tokens": sum(r["num_generation_tokens"] for r in valid),
@@ -576,7 +585,7 @@ def main():
             print(f"reference: {rec['reference']}")
         print(f"prediction: {rec['prediction']}")
         if rec["e2e_latency_s"] is not None:
-            print(f"[metrics] e2e={rec['e2e_latency_s']}s  ttft={rec['first_token_latency_s']}s  gen_tokens={rec['num_generation_tokens']}  tps={rec['tokens_per_second']}")
+            print(f"[metrics] e2e={rec['e2e_latency_s']}s  ttft={rec['first_token_latency_s']}s  prefill={rec['prefill_time_s']}s  decode={rec['decode_time_s']}s  gen_tokens={rec['num_generation_tokens']}  tps={rec['tokens_per_second']}")
 
     if agg:
         print("\n" + "=" * 80)
@@ -591,6 +600,14 @@ def main():
             print(f"  tokens/s mean    : {agg['tokens_per_second_mean']}")
         if agg['ttft_mean_s']:
             print(f"  TTFT mean        : {agg['ttft_mean_s']}s")
+        if agg.get('prefill_time_mean_s'):
+            print(f"  prefill time mean: {agg['prefill_time_mean_s']}s")
+        if agg.get('prefill_time_p50_s'):
+            print(f"  prefill time p50 : {agg['prefill_time_p50_s']}s")
+        if agg.get('decode_time_mean_s'):
+            print(f"  decode time mean : {agg['decode_time_mean_s']}s")
+        if agg.get('decode_time_p50_s'):
+            print(f"  decode time p50  : {agg['decode_time_p50_s']}s")
         print(f"  total gen tokens : {agg['total_gen_tokens']}")
 
     # ── Save to JSON if requested ─────────────────────────────────────────────

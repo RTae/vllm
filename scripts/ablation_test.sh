@@ -55,8 +55,12 @@ a = data.get("aggregate", {})
 print(f"    throughput       : {a.get('throughput_samples_per_s')} samples/s")
 print(f"    e2e latency p50  : {a.get('e2e_latency_p50_s')}s")
 print(f"    e2e latency p95  : {a.get('e2e_latency_p95_s')}s")
-print(f"    tokens/s mean    : {a.get('tokens_per_second_mean')}")
 print(f"    TTFT mean        : {a.get('ttft_mean_s')}s")
+print(f"    prefill time mean: {a.get('prefill_time_mean_s')}s")
+print(f"    prefill time p50 : {a.get('prefill_time_p50_s')}s")
+print(f"    decode time mean : {a.get('decode_time_mean_s')}s")
+print(f"    decode time p50  : {a.get('decode_time_p50_s')}s")
+print(f"    tokens/s mean    : {a.get('tokens_per_second_mean')}")
 print(f"    total gen tokens : {a.get('total_gen_tokens')}")
 PYEOF
     fi
