@@ -70,6 +70,19 @@ uv pip install --python .venv/bin/python -e ./spas_sage_attn
 ```
 
 ## Download Models and Datasets
+1. Download datasets:
+
+```bash
+./scripts/download_datasets.sh
+
+python scripts/create_drivelm_nuscenes.py
+```
+
+2. Download models:
+
+```bashbash
+./scripts/download_models.sh
+```
 
 ## Test Inference
 
