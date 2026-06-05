@@ -471,6 +471,8 @@ def main():
         # SpargeAttention uses Python-level per-sequence iteration in its
         # forward pass and is incompatible with torch.compile/CUDA graphs.
         enforce_eager=args.sparge_attn or False,
+        # Enable per-request metrics so output.metrics is populated.
+        disable_log_stats=False,
     )
     sampling_params = SamplingParams(
         temperature=args.temperature,
@@ -544,7 +546,7 @@ def main():
             "throughput_samples_per_s": round(len(valid) / total_wall_time, 3),
             "e2e_latency_mean_s": round(statistics.mean(latencies), 4),
             "e2e_latency_p50_s": round(statistics.median(latencies), 4),
-            "e2e_latency_p95_s": round(sorted(latencies)[int(len(latencies) * 0.95)], 4) if len(latencies) > 1 else latencies[0],
+            "e2e_latency_p95_s": round(sorted(latencies)[min(int(len(latencies) * 0.95), len(latencies) - 1)], 4) if latencies else None,
             "tokens_per_second_mean": round(statistics.mean(tps_list), 2) if tps_list else None,
             "ttft_mean_s": round(statistics.mean(ttfts), 4) if ttfts else None,
             "total_gen_tokens": sum(r["num_generation_tokens"] for r in valid),
