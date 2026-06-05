@@ -289,28 +289,31 @@ class SpargeAttentionImpl(AttentionImpl):
                 )
                 continue
 
-            # SpargeAttention API wants layout NHD → already our layout.
-            # Add batch dim: [1, T, H, D] — must be contiguous.
-            q_b = q_seq.unsqueeze(0)
-            k_b = k_seq.unsqueeze(0)
-            v_b = v_seq.unsqueeze(0)
+            # SpargeAttention expects 4D tensors in [B, H, N, D] layout
+            # (tensor_layout="HND" default, i.e. [Batch, Heads, Seq, Dim]).
+            # It does NOT handle GQA internally — Q and K must have equal
+            # head counts for the block similarity matmul to work.
+            # [N, H, D] → [1, H, N, D]
+            q_b = q_seq.permute(1, 0, 2).unsqueeze(0).contiguous()
+            k_b = k_seq.permute(1, 0, 2).unsqueeze(0).contiguous()
+            v_b = v_seq.permute(1, 0, 2).unsqueeze(0).contiguous()
 
-            # GQA: expand KV heads to match Q heads if needed.
+            # GQA: expand KV heads to match Q heads on dim=1 of [1, H, N, D].
             if self.num_kv_heads != self.num_heads:
                 repeat = self.num_heads // self.num_kv_heads
-                k_b = k_b.repeat_interleave(repeat, dim=2)
-                v_b = v_b.repeat_interleave(repeat, dim=2)
+                k_b = k_b.repeat_interleave(repeat, dim=1)
+                v_b = v_b.repeat_interleave(repeat, dim=1)
 
             out_b = self._sparge_fn(
                 q_b, k_b, v_b,
                 is_causal=True,
                 scale=self.scale,
                 topk=self.topk,
-                tensor_layout="NHD",
                 output_dtype=query.dtype,
-            )  # [1, q_len, H, D]
+            )  # [1, H, N, D]
 
-            output[q_start:q_end] = out_b[0]
+            # [1, H, N, D] → [N, H, D]
+            output[q_start:q_end] = out_b[0].permute(1, 0, 2)
 
     # ------------------------------------------------------------------
     # Decode: fall back to FlashAttention (dense, paged)
