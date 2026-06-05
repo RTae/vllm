@@ -132,7 +132,26 @@ python /workspace/vllm/scripts/infer_drivelm_lora.py \
 ```
 
 ### Attention Backends
-#### With Sparge Attention
+#### Triton (no FlashAttention)
+```bash
+python scripts/infer_drivelm_lora.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 100 \
+  --attention-backend TRITON_ATTN
+```
+
+#### FlashAttention (default)
+```bash
+python scripts/infer_drivelm_lora.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 100
+```
+
+#### SpargeAttention (sparse prefill)
 ```bash
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \

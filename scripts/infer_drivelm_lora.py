@@ -117,6 +117,17 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--attention-backend",
+        type=str,
+        default=None,
+        metavar="BACKEND",
+        help=(
+            "Override the attention backend. Options: FLASH_ATTN (default), "
+            "FLASHINFER (no FlashAttention), TRITON_ATTN (no FlashAttention, Triton only). "
+            "Ignored when --sparge-attn is set."
+        ),
+    )
+    parser.add_argument(
         "--speculative-decoding",
         action="store_true",
         help="Enable speculative decoding using a smaller draft model.",
@@ -445,7 +456,7 @@ def main():
         trust_remote_code=args.trust_remote_code,
         speculative_config=speculative_config,
         attention_backend=(
-            "SPARGE_ATTN" if args.sparge_attn else None
+            "SPARGE_ATTN" if args.sparge_attn else args.attention_backend
         ),
         # SpargeAttention uses Python-level per-sequence iteration in its
         # forward pass and is incompatible with torch.compile/CUDA graphs.
