@@ -65,8 +65,7 @@ Find the full list of supported models [here](https://docs.vllm.ai/en/latest/mod
 
 ```bash
 uv pip install -e . --torch-backend=auto
-uv pip install datasets transformers
-uv pip install --python .venv/bin/python -e ./spas_sage_attn
+uv pip install datasets transformers peft
 uv pip install --python .venv/bin/python --no-build-isolation -e ./spas_sage_attn -v
 ```
 
