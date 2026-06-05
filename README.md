@@ -67,6 +67,7 @@ Find the full list of supported models [here](https://docs.vllm.ai/en/latest/mod
 uv pip install -e . --torch-backend=auto
 uv pip install datasets transformers
 uv pip install --python .venv/bin/python -e ./spas_sage_attn
+uv pip install --python .venv/bin/python --no-build-isolation -e ./spas_sage_attn -v
 ```
 
 ## Download Models and Datasets
@@ -84,7 +85,7 @@ python scripts/create_drivelm_nuscenes.py
 ./scripts/download_models.sh
 ```
 
-## Test Inference
+## Inference
 
 ### Run baseline
 ```bash
