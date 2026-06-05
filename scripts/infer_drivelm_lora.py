@@ -281,21 +281,7 @@ def extract_question_and_reference(sample: dict) -> tuple[str, str | None]:
 
 
 def validate_speculative_decoding(args, samples: list[dict], base_model: str) -> None:
-    if not args.speculative_decoding:
-        return
-
-    has_multimodal_input = any(
-        len(get_sample_value(sample, "image_paths", "image", default=[])) > 0
-        for sample in samples
-    )
-    is_qwen3_vl = "qwen3-vl" in base_model.lower()
-
-    if has_multimodal_input and is_qwen3_vl:
-        raise ValueError(
-            "Speculative decoding with a draft model is not currently supported "
-            "for multimodal Qwen3-VL inputs in this vLLM version. Use normal "
-            "decoding for image inputs, or switch to a text-only workload."
-        )
+    pass
 
 
 def build_prompt(processor, question: str, num_images: int) -> str:

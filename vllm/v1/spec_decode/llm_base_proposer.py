@@ -1317,6 +1317,30 @@ class SpecDecodeBaseProposer:
                 )
                 self.supports_mm_inputs = False
 
+            # Even when the draft model supports multimodal inputs, the
+            # multimodal embeddings produced by the target model's vision
+            # encoder have dimensions tied to the target's hidden size.
+            # If the draft and target hidden sizes differ (e.g. 8B target +
+            # 2B draft), passing those embeddings to the draft model will
+            # cause a shape mismatch inside the deepstack splitter or
+            # equivalent projection layers. Fall back to text-only draft
+            # speculation in that case; the draft model still proposes
+            # tokens based on the text KV-cache context.
+            if self.supports_mm_inputs:
+                target_hidden = self.vllm_config.model_config.get_hidden_size()
+                draft_hidden = self.draft_model_config.get_hidden_size()
+                if target_hidden != draft_hidden:
+                    logger.warning(
+                        "Draft model hidden size (%d) differs from target "
+                        "model hidden size (%d). Multimodal embeddings "
+                        "produced by the target model cannot be consumed by "
+                        "the draft model. Falling back to text-only draft "
+                        "speculation.",
+                        draft_hidden,
+                        target_hidden,
+                    )
+                    self.supports_mm_inputs = False
+
         if supports_multimodal(target_model):
             # handle multimodality
             assert hasattr(target_model, "config")
