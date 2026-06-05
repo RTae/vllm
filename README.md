@@ -93,7 +93,25 @@ python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 100
+  --num-samples 100 \
+  --attention-backend TRITON_ATTN
+```
+
+```txt
+AGGREGATE METRICS
+  samples          : 100
+  wall time        : 45.83s
+  throughput       : 2.182 samples/s
+  e2e latency mean : 20.4989s
+  e2e latency p50  : 20.9438s
+  e2e latency p95  : 32.814s
+  tokens/s mean    : 1.12
+  TTFT mean        : 14.1056s
+  prefill time mean: 2.6589s
+  prefill time p50 : 1.7793s
+  decode time mean : 6.3933s
+  decode time p50  : 2.5702s
+  total gen tokens : 2991
 ```
 
 ### Speculative decoding
@@ -105,7 +123,25 @@ python scripts/infer_drivelm_lora.py \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 100 \
   --ngram \
-  --num-speculative-tokens 5
+  --num-speculative-tokens 5 \
+  --attention-backend TRITON_ATTN
+```
+
+```txt
+AGGREGATE METRICS
+  samples          : 100
+  wall time        : 54.56s
+  throughput       : 1.833 samples/s
+  e2e latency mean : 25.8072s
+  e2e latency p50  : 27.2647s
+  e2e latency p95  : 38.9524s
+  tokens/s mean    : 0.9
+  TTFT mean        : 18.0023s
+  prefill time mean: 2.8864s
+  prefill time p50 : 1.6377s
+  decode time mean : 7.805s
+  decode time p50  : 3.3781s
+  total gen tokens : 2997
 ```
 
 #### With draft model
@@ -117,7 +153,25 @@ python scripts/infer_drivelm_lora.py \
   --num-samples 100 \
   --speculative-decoding \
   --draft-model /workspace/.hf_home/qwen3-vl-2b/ \
-  --num-speculative-tokens 5
+  --num-speculative-tokens 5 \
+  --attention-backend TRITON_ATTN
+```
+
+```txt
+AGGREGATE METRICS
+  samples          : 100
+  wall time        : 57.49s
+  throughput       : 1.739 samples/s
+  e2e latency mean : 20.9826s
+  e2e latency p50  : 21.5327s
+  e2e latency p95  : 35.6791s
+  tokens/s mean    : 1.07
+  TTFT mean        : 16.472s
+  prefill time mean: 1.632s
+  prefill time p50 : 1.1161s
+  decode time mean : 4.5107s
+  decode time p50  : 1.7117s
+  total gen tokens : 2925
 ```
 
 #### With EAGLE proposer
@@ -128,19 +182,28 @@ python /workspace/vllm/scripts/infer_drivelm_lora.py \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 100 \
   --eagle3 /workspace/.hf_home/qwen3-vl-8b-eagle3 \
-  --num-speculative-tokens 5
+  --num-speculative-tokens 5 \
+  --attention-backend TRITON_ATTN
+```
+
+```txt
+AGGREGATE METRICS
+  samples          : 100
+  wall time        : 65.06s
+  throughput       : 1.537 samples/s
+  e2e latency mean : 34.0451s
+  e2e latency p50  : 38.5903s
+  e2e latency p95  : 49.6095s
+  tokens/s mean    : 0.71
+  TTFT mean        : 27.797s
+  prefill time mean: 13.9762s
+  prefill time p50 : 15.2291s
+  decode time mean : 6.2481s
+  decode time p50  : 2.7681s
+  total gen tokens : 2964
 ```
 
 ### Attention Backends
-#### Triton (no FlashAttention)
-```bash
-python scripts/infer_drivelm_lora.py \
-  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
-  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
-  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 100 \
-  --attention-backend TRITON_ATTN
-```
 
 #### FlashAttention (default)
 ```bash
@@ -151,7 +214,24 @@ python scripts/infer_drivelm_lora.py \
   --num-samples 100
 ```
 
-#### SpargeAttention (sparse prefill)
+```txt
+AGGREGATE METRICS
+  samples          : 100
+  wall time        : 37.52s
+  throughput       : 2.665 samples/s
+  e2e latency mean : 15.3654s
+  e2e latency p50  : 15.2807s
+  e2e latency p95  : 25.5983s
+  tokens/s mean    : 1.47
+  TTFT mean        : 10.1351s
+  prefill time mean: 2.1091s
+  prefill time p50 : 1.6195s
+  decode time mean : 5.2303s
+  decode time p50  : 2.2644s
+  total gen tokens : 2989
+```
+
+<!-- #### SpargeAttention (sparse prefill)
 ```bash
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
@@ -160,15 +240,26 @@ python scripts/infer_drivelm_lora.py \
   --num-samples 100 \
   --sparge-attn \
   --sparge-topk 0.5
+``` -->
+
+### Apply flash attention and speculative decoding (EAGLE proposer)
+```bash
+python scripts/infer_drivelm_lora.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 100 \
+  --eagle3 /workspace/.hf_home/qwen3-vl-8b-eagle3 \
+  --num-speculative-tokens 5
 ```
 
 ## Ablation Study of Speculative Decoding
 
 ```bash
-NUM_SAMPLES=1000 ./scripts/ablation_test.sh
+NUM_SAMPLES=100 ./scripts/ablation_test.sh
 
 # run with nohup
-nohup NUM_SAMPLES=1000 ./scripts/ablation_test.sh > ablation_test.log 2>&1 &
+nohup NUM_SAMPLES=100 ./scripts/ablation_test.sh > ablation_test.log 2>&1 &
 tail -f ablation_test.log
 ```
 
