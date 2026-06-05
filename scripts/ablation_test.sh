@@ -86,20 +86,15 @@ print_section() { echo ""; echo ""; echo "  ▶ $1"; echo "" | tee -a "$SUMMARY_
 
 print_section "BASELINE"
 
-# 0. True baseline – vLLM defaults (FlashAttention + APC, no SD)
+# 0. True baseline – vLLM defaults (Triton, no APC, no SD)
 run_experiment "00_baseline_default" \
-  "${COMMON[@]}" \
-  --no-prefix-caching
-
-print_section "ATTENTION BACKENDS"
-
-# 1a. Baseline – Triton
-run_experiment "01a_attn_triton_no_apc" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching
 
-# 1b. FlashAttention
+print_section "ATTENTION BACKENDS"
+
+# 1. FlashAttention
 run_experiment "01b_attn_flash_no_apc" \
   "${COMMON[@]}" \
   --no-prefix-caching
