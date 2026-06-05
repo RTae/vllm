@@ -76,7 +76,7 @@ uv pip install --python .venv/bin/python -e ./spas_sage_attn
 HF_HOME=/workspace/.hf_home HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
-  --base-model /workspace/.hf_home/hub/models--qwen--Qwen3-VL-8B-Instruct/snapshots/0c351dd01ed87e9c1b53cbc748cba10e6187ff3b \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 4 \
   --offline
@@ -87,7 +87,7 @@ python scripts/infer_drivelm_lora.py \
 HF_HOME=/workspace/.hf_home HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
 python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-2B-Instruct \
-  --base-model /workspace/.hf_home/hub/models--qwen--Qwen3-VL-2B-Instruct/snapshots/89644892e4d85e24eaac8bacfd4f463576704203 \
+  --base-model /workspace/.hf_home/qwen3-vl-2b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 4 \
   --offline
