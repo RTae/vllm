@@ -92,7 +92,7 @@ python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 4 \
+  --num-samples 4 
 ```
 
 ### Run with speculative decoding
