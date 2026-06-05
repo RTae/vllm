@@ -98,11 +98,6 @@ def parse_args():
         action="store_true",
         help="Enable trust_remote_code for base model loading.",
     )
-    parser.add_argument(
-        "--offline",
-        action="store_true",
-        help="Force local-only model loading and disable Hugging Face Hub network requests.",
-    )
     return parser.parse_args()
 
 
@@ -224,9 +219,8 @@ def build_prompt(processor, question: str, num_images: int) -> str:
 def main():
     args = parse_args()
 
-    if args.offline:
-        os.environ["HF_HUB_OFFLINE"] = "1"
-        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
     from transformers import AutoProcessor
     from vllm import LLM, SamplingParams
@@ -236,11 +230,17 @@ def main():
     base_model = resolve_base_model(adapter_config, args.base_model)
     max_lora_rank = adapter_config.get("r", 64)
 
-    processor = AutoProcessor.from_pretrained(
-        base_model,
-        trust_remote_code=args.trust_remote_code,
-        local_files_only=args.offline,
-    )
+    try:
+        processor = AutoProcessor.from_pretrained(
+            base_model,
+            trust_remote_code=args.trust_remote_code,
+            local_files_only=True,
+        )
+    except OSError as error:
+        raise RuntimeError(
+            "Base model was not found locally. Download it first or pass a local "
+            "snapshot path with --base-model."
+        ) from error
 
     dataset = load_samples(args.dataset, args.split)
     end_index = min(len(dataset), args.start_index + args.num_samples)

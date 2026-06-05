@@ -65,9 +65,11 @@ Find the full list of supported models [here](https://docs.vllm.ai/en/latest/mod
 
 ```bash
 uv pip install -e . --torch-backend=auto
-uv pip install datasets
+uv pip install datasets transformers
 uv pip install --python .venv/bin/python -e ./spas_sage_attn
 ```
+
+## Download Models and Datasets
 
 ## Test Inference
 
@@ -79,7 +81,6 @@ python scripts/infer_drivelm_lora.py \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 4 \
-  --offline
 ```
 
 ### Run the following command to test inference on a Qwen3-VL-2B-Instruct LoRA adapter:
@@ -90,5 +91,4 @@ python scripts/infer_drivelm_lora.py \
   --base-model /workspace/.hf_home/qwen3-vl-2b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 4 \
-  --offline
 ```
