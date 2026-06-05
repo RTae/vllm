@@ -227,11 +227,13 @@ class SpargeAttentionImpl(AttentionImpl):
         expand the paged KV cache into a dense representation first for
         each sequence in the batch.
         """
-        # Move index tensors to CPU once before the loop to avoid GPU→CPU
-        # synchronization inside a compiled/CUDA-graph execution context.
+        # Move only loop-control tensors to CPU. Keep block_table on GPU so
+        # that KV cache indexing uses proper CUDA semantics and avoids
+        # illegal memory access errors that occur when indexing a CUDA tensor
+        # with a Python list.
         query_start_loc = attn_metadata.query_start_loc.cpu().tolist()
         seq_lens = attn_metadata.seq_lens.cpu().tolist()
-        block_table_cpu = attn_metadata.block_table.cpu()
+        block_table_gpu = attn_metadata.block_table  # stays on GPU
         num_reqs = len(query_start_loc) - 1
 
         for i in range(num_reqs):
@@ -244,21 +246,23 @@ class SpargeAttentionImpl(AttentionImpl):
                 continue
 
             # Gather KV pages for this sequence.
-            block_table_row = block_table_cpu[i]
-            num_blocks_needed = math.ceil(kv_len / key_cache.shape[1])
-            block_ids = block_table_row[:num_blocks_needed].tolist()
-
-            # key_cache: [num_blocks, block_size, Hkv, D]  →
-            #            flatten to  [num_blocks * block_size, Hkv, D]
-            # then slice to kv_len.
+            # Use index_select (safer than fancy indexing on non-contiguous
+            # kv_cache views from unbind) and force contiguous output for
+            # Triton kernel compatibility.
             block_size = key_cache.shape[1]
-            k_flat = key_cache[block_ids].reshape(-1, self.num_kv_heads, self.head_size)
-            v_flat = value_cache[block_ids].reshape(-1, self.num_kv_heads, self.head_size)
-            k_seq = k_flat[:kv_len]   # [kv_len, Hkv, D]
-            v_seq = v_flat[:kv_len]
+            num_blocks_needed = math.ceil(kv_len / block_size)
+            block_ids = block_table_gpu[i, :num_blocks_needed]  # 1D GPU tensor
 
-            # q_seq: [q_len, H, D]
-            q_seq = query[q_start:q_end]
+            # index_select produces a contiguous output on non-contiguous inputs.
+            k_blocks = torch.index_select(key_cache, 0, block_ids)
+            v_blocks = torch.index_select(value_cache, 0, block_ids)
+            k_flat = k_blocks.reshape(-1, self.num_kv_heads, self.head_size)
+            v_flat = v_blocks.reshape(-1, self.num_kv_heads, self.head_size)
+            k_seq = k_flat[:kv_len].contiguous()
+            v_seq = v_flat[:kv_len].contiguous()
+
+            # q_seq: [q_len, H, D] — force contiguous for Triton kernels
+            q_seq = query[q_start:q_end].contiguous()
 
             # SpargeAttention requires at least 128 query tokens.
             # For shorter sequences fall back to FlashAttention exactly
@@ -286,10 +290,10 @@ class SpargeAttentionImpl(AttentionImpl):
                 continue
 
             # SpargeAttention API wants layout NHD → already our layout.
-            # Add batch dim: [1, T, H, D]
-            q_b = q_seq.unsqueeze(0)    # [1, q_len, H,   D]
-            k_b = k_seq.unsqueeze(0)    # [1, kv_len, Hkv, D]
-            v_b = v_seq.unsqueeze(0)    # [1, kv_len, Hkv, D]
+            # Add batch dim: [1, T, H, D] — must be contiguous.
+            q_b = q_seq.unsqueeze(0)
+            k_b = k_seq.unsqueeze(0)
+            v_b = v_seq.unsqueeze(0)
 
             # GQA: expand KV heads to match Q heads if needed.
             if self.num_kv_heads != self.num_heads:
