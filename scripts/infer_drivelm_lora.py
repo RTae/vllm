@@ -517,22 +517,30 @@ def main():
         m = output.metrics  # RequestStateStats or None
         gen_tokens = len(output.outputs[0].token_ids)
 
-        # Derive latency from available timestamps.
-        # first_token_latency is stored directly; e2e is last_token - arrival.
+        # Timestamps in RequestStateStats:
+        #   arrival_time    – wall-clock (frontend)
+        #   first_token_ts  – monotonic (engine core)
+        #   last_token_ts   – monotonic (engine core)
+        #   first_token_latency – already computed (wall-clock seconds)
+        #
+        # Do NOT mix clocks. Compute e2e as:
+        #   first_token_latency + (last_token_ts - first_token_ts)
         e2e = None
-        if m and m.arrival_time and m.last_token_ts:
-            e2e = round(m.last_token_ts - m.arrival_time, 4)
-        ttft = round(m.first_token_latency, 4) if m else None
+        decode_time = None
+        ttft = round(m.first_token_latency, 4) if m and m.first_token_latency else None
+        if m and m.first_token_ts and m.last_token_ts and ttft is not None:
+            decode_time = round(m.last_token_ts - m.first_token_ts, 4)
+            e2e = round(ttft + decode_time, 4)
         tps = round(gen_tokens / e2e, 2) if e2e and e2e > 0 else None
 
         record = {
             "id": meta["id"],
             "num_images": meta["num_images"],
-            "num_prompt_tokens": None,  # not available in RequestStateStats
+            "num_prompt_tokens": None,
             "num_generation_tokens": gen_tokens,
             "e2e_latency_s": e2e,
             "first_token_latency_s": ttft,
-            "decode_time_s": None,
+            "decode_time_s": decode_time,
             "prefill_time_s": None,
             "tokens_per_second": tps,
         }
