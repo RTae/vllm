@@ -516,18 +516,25 @@ def main():
     for meta, output in zip(metadata, outputs, strict=True):
         m = output.metrics  # RequestStateStats or None
         gen_tokens = len(output.outputs[0].token_ids)
+
+        # Derive latency from available timestamps.
+        # first_token_latency is stored directly; e2e is last_token - arrival.
+        e2e = None
+        if m and m.arrival_time and m.last_token_ts:
+            e2e = round(m.last_token_ts - m.arrival_time, 4)
+        ttft = round(m.first_token_latency, 4) if m else None
+        tps = round(gen_tokens / e2e, 2) if e2e and e2e > 0 else None
+
         record = {
             "id": meta["id"],
             "num_images": meta["num_images"],
-            "num_prompt_tokens": int(m.num_prompt_tokens) if m else None,
+            "num_prompt_tokens": None,  # not available in RequestStateStats
             "num_generation_tokens": gen_tokens,
-            "e2e_latency_s": round(m.e2e_latency, 4) if m else None,
-            "first_token_latency_s": round(m.first_token_latency, 4) if m else None,
-            "decode_time_s": round(m.decode_time, 4) if m else None,
-            "prefill_time_s": round(m.prefill_time, 4) if m else None,
-            "tokens_per_second": round(
-                gen_tokens / m.e2e_latency, 2
-            ) if m and m.e2e_latency > 0 else None,
+            "e2e_latency_s": e2e,
+            "first_token_latency_s": ttft,
+            "decode_time_s": None,
+            "prefill_time_s": None,
+            "tokens_per_second": tps,
         }
         records.append({**record, "question": meta["question"], "reference": meta["reference"],
                         "prediction": output.outputs[0].text.strip()})
