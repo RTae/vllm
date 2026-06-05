@@ -77,21 +77,29 @@ COMMON=(
   --num-samples  "$NUM_SAMPLES"
 )
 
+
 # ════════════════════════════════════════════════════════════════════════════════
 # Section 1: Attention Backends
 # Fixed: no APC so only the attention kernel changes.
 # ════════════════════════════════════════════════════════════════════════════════
 print_section() { echo ""; echo ""; echo "  ▶ $1"; echo "" | tee -a "$SUMMARY_FILE"; echo "  ▶ $1" >> "$SUMMARY_FILE"; }
 
-print_section "ATTENTION BACKENDS (no APC)"
+print_section "BASELINE"
 
-# 1a. Baseline – Triton (no APC)
+# 0. True baseline – vLLM defaults (FlashAttention + APC, no SD)
+run_experiment "00_baseline_default" \
+  "${COMMON[@]}" \
+  --no-prefix-caching
+
+print_section "ATTENTION BACKENDS"
+
+# 1a. Baseline – Triton
 run_experiment "01a_attn_triton_no_apc" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching
 
-# 1b. FlashAttention (no APC)
+# 1b. FlashAttention
 run_experiment "01b_attn_flash_no_apc" \
   "${COMMON[@]}" \
   --no-prefix-caching
@@ -102,13 +110,7 @@ run_experiment "01b_attn_flash_no_apc" \
 # ════════════════════════════════════════════════════════════════════════════════
 print_section "AUTOMATIC PREFIX CACHING"
 
-# 2a. Triton – APC disabled
-run_experiment "02a_apc_triton_off" \
-  "${COMMON[@]}" \
-  --attention-backend TRITON_ATTN \
-  --no-prefix-caching
-
-# 2b. Triton – APC enabled
+# 2. Triton – APC enabled
 run_experiment "02b_apc_triton_on" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN
@@ -125,35 +127,31 @@ SD_BASE=(
   --no-prefix-caching
 )
 
-# 3a. No speculative decoding (control)
-run_experiment "03a_sd_none" \
-  "${SD_BASE[@]}"
-
-# 3b. N-gram
+# 3a. N-gram
 run_experiment "03b_sd_ngram_k${NUM_SPEC_TOKENS}" \
   "${SD_BASE[@]}" \
   --ngram \
   --num-speculative-tokens "$NUM_SPEC_TOKENS"
 
-# 3c. Draft model (merged 2B LoRA)
+# 3b. Draft model (merged 2B LoRA)
 if [[ -d "$DRAFT_MODEL" ]]; then
-  run_experiment "03c_sd_draft_2b_k${NUM_SPEC_TOKENS}" \
+  run_experiment "03b_sd_draft_2b_k${NUM_SPEC_TOKENS}" \
     "${SD_BASE[@]}" \
     --speculative-decoding \
     --draft-model "$DRAFT_MODEL" \
     --num-speculative-tokens "$NUM_SPEC_TOKENS"
 else
-  echo "  ⚠  SKIP 03c_sd_draft_2b: $DRAFT_MODEL not found" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP 03b_sd_draft_2b: $DRAFT_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 
-# 3d. EAGLE3
+# 3c. EAGLE3
 if [[ -d "$EAGLE3_MODEL" ]]; then
-  run_experiment "03d_sd_eagle3_k${NUM_SPEC_TOKENS}" \
+  run_experiment "03c_sd_eagle3_k${NUM_SPEC_TOKENS}" \
     "${SD_BASE[@]}" \
     --eagle3 "$EAGLE3_MODEL" \
     --num-speculative-tokens "$NUM_SPEC_TOKENS"
 else
-  echo "  ⚠  SKIP 03d_sd_eagle3: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP 03c_sd_eagle3: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 
 # ── Apply all ─────────────────────────────────────────────────────────────────
