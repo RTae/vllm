@@ -1,9 +1,8 @@
-from __future__ import annotations
-
 import argparse
 import json
 import os
 from pathlib import Path
+from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_NUM_SPECULATIVE_TOKENS = 5
