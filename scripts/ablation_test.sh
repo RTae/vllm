@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Ablation study: speculative decoding strategies
-# Runs baseline and Eagle3 speculative decoding back-to-back and prints
-# a timing summary at the end.
+# Ablation study: all inference configurations from README
+# Skips SpargeAttention (not yet stable).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,13 +11,14 @@ INFER="$REPO_ROOT/scripts/infer_drivelm_lora.py"
 
 ADAPTER_PATH="${ADAPTER_PATH:-/workspace/vllm/models/Qwen3-VL-8B-Instruct}"
 BASE_MODEL="${BASE_MODEL:-/workspace/.hf_home/qwen3-vl-8b/}"
+DRAFT_MODEL="${DRAFT_MODEL:-/workspace/.hf_home/qwen3-vl-2b-merged/}"
 EAGLE3_MODEL="${EAGLE3_MODEL:-/workspace/.hf_home/qwen3-vl-8b-eagle3}"
 DATASET="${DATASET:-/workspace/vllm/datasets/DriveLM_nuScenes/split/val}"
 NUM_SAMPLES="${NUM_SAMPLES:--1}"
 NUM_SPEC_TOKENS="${NUM_SPEC_TOKENS:-5}"
 
 # ── Results directory ────────────────────────────────────────────────────────
-RESULTS_DIR="$REPO_ROOT/ablation_results/speculative_decoding"
+RESULTS_DIR="$REPO_ROOT/ablation_results"
 mkdir -p "$RESULTS_DIR"
 
 SUMMARY_FILE="$RESULTS_DIR/summary.txt"
@@ -69,21 +69,104 @@ PYEOF
   fi
 }
 
-# ── Experiments ──────────────────────────────────────────────────────────────
-COMMON_ARGS=(
-  --adapter-path  "$ADAPTER_PATH"
-  --base-model    "$BASE_MODEL"
-  --dataset       "$DATASET"
-  --num-samples   "$NUM_SAMPLES"
+# ── Shared args ───────────────────────────────────────────────────────────────
+COMMON=(
+  --adapter-path "$ADAPTER_PATH"
+  --base-model   "$BASE_MODEL"
+  --dataset      "$DATASET"
+  --num-samples  "$NUM_SAMPLES"
 )
 
-run_experiment "baseline" \
-  "${COMMON_ARGS[@]}"
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 1: Attention Backends
+# Fixed: no APC so only the attention kernel changes.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section() { echo ""; echo ""; echo "  ▶ $1"; echo "" | tee -a "$SUMMARY_FILE"; echo "  ▶ $1" >> "$SUMMARY_FILE"; }
 
-run_experiment "eagle3_spec_tokens_${NUM_SPEC_TOKENS}" \
-  "${COMMON_ARGS[@]}" \
-  --eagle3 "$EAGLE3_MODEL" \
+print_section "ATTENTION BACKENDS (no APC)"
+
+# 1a. Baseline – Triton (no APC)
+run_experiment "01a_attn_triton_no_apc" \
+  "${COMMON[@]}" \
+  --attention-backend TRITON_ATTN \
+  --no-prefix-caching
+
+# 1b. FlashAttention (no APC)
+run_experiment "01b_attn_flash_no_apc" \
+  "${COMMON[@]}" \
+  --no-prefix-caching
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 2: Automatic Prefix Caching
+# Fixed: Triton backend so only APC changes.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "AUTOMATIC PREFIX CACHING"
+
+# 2a. Triton – APC disabled
+run_experiment "02a_apc_triton_off" \
+  "${COMMON[@]}" \
+  --attention-backend TRITON_ATTN \
+  --no-prefix-caching
+
+# 2b. Triton – APC enabled
+run_experiment "02b_apc_triton_on" \
+  "${COMMON[@]}" \
+  --attention-backend TRITON_ATTN
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 3: Speculative Decoding
+# Fixed: Triton + no APC so only the SD strategy changes.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "SPECULATIVE DECODING (Triton, no APC)"
+
+SD_BASE=(
+  "${COMMON[@]}"
+  --attention-backend TRITON_ATTN
+  --no-prefix-caching
+)
+
+# 3a. No speculative decoding (control)
+run_experiment "03a_sd_none" \
+  "${SD_BASE[@]}"
+
+# 3b. N-gram
+run_experiment "03b_sd_ngram_k${NUM_SPEC_TOKENS}" \
+  "${SD_BASE[@]}" \
+  --ngram \
   --num-speculative-tokens "$NUM_SPEC_TOKENS"
+
+# 3c. Draft model (merged 2B LoRA)
+if [[ -d "$DRAFT_MODEL" ]]; then
+  run_experiment "03c_sd_draft_2b_k${NUM_SPEC_TOKENS}" \
+    "${SD_BASE[@]}" \
+    --speculative-decoding \
+    --draft-model "$DRAFT_MODEL" \
+    --num-speculative-tokens "$NUM_SPEC_TOKENS"
+else
+  echo "  ⚠  SKIP 03c_sd_draft_2b: $DRAFT_MODEL not found" | tee -a "$SUMMARY_FILE"
+fi
+
+# 3d. EAGLE3
+if [[ -d "$EAGLE3_MODEL" ]]; then
+  run_experiment "03d_sd_eagle3_k${NUM_SPEC_TOKENS}" \
+    "${SD_BASE[@]}" \
+    --eagle3 "$EAGLE3_MODEL" \
+    --num-speculative-tokens "$NUM_SPEC_TOKENS"
+else
+  echo "  ⚠  SKIP 03d_sd_eagle3: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
+fi
+
+# ── Apply all ─────────────────────────────────────────────────────────────────
+print_section "APPLY ALL (Eagle3 + FlashAttention + APC)"
+
+if [[ -d "$EAGLE3_MODEL" ]]; then
+  run_experiment "04_all_eagle3_flash_apc" \
+    "${COMMON[@]}" \
+    --eagle3 "$EAGLE3_MODEL" \
+    --num-speculative-tokens "$NUM_SPEC_TOKENS"
+else
+  echo "  ⚠  SKIP 04_all: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
+fi
 
 # ── Print summary ─────────────────────────────────────────────────────────────
 echo ""
@@ -92,4 +175,4 @@ echo "  Ablation summary"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 cat "$SUMMARY_FILE"
 echo ""
-echo "  Logs saved to: $RESULTS_DIR"
+echo "  Logs and metrics: $RESULTS_DIR"
