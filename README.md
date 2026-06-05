@@ -93,7 +93,7 @@ python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 10
+  --num-samples 100
 ```
 
 ### Speculative decoding
@@ -103,7 +103,7 @@ python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 10 \
+  --num-samples 100 \
   --ngram \
   --num-speculative-tokens 5
 ```
@@ -114,7 +114,7 @@ python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 10 \
+  --num-samples 100 \
   --speculative-decoding \
   --draft-model /workspace/.hf_home/qwen3-vl-2b/ \
   --num-speculative-tokens 5
@@ -126,7 +126,7 @@ python /workspace/vllm/scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 10 \
+  --num-samples 100 \
   --eagle3 /workspace/.hf_home/qwen3-vl-8b-eagle3 \
   --num-speculative-tokens 5
 ```
@@ -138,7 +138,7 @@ python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
-  --num-samples 10 \
+  --num-samples 100 \
   --sparge-attn \
   --sparge-topk 0.5
 ```
