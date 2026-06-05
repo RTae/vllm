@@ -136,6 +136,22 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--disable-mm-preprocessor-cache",
+        action="store_true",
+        help=(
+            "Disable the multimodal preprocessor cache (sets mm_processor_cache_gb=0). "
+            "Enabled by default; disabling forces images to be re-preprocessed each request."
+        ),
+    )
+    parser.add_argument(
+        "--disable-chunked-mm-input",
+        action="store_true",
+        help=(
+            "Disable chunked multimodal input (disable_chunked_mm_input=True). "
+            "Enabled by default; disabling prevents splitting large mm inputs across chunks."
+        ),
+    )
+    parser.add_argument(
         "--speculative-decoding",
         action="store_true",
         help="Enable speculative decoding using a smaller draft model.",
@@ -483,6 +499,10 @@ def main():
         disable_log_stats=False,
         # APC is on by default; --no-prefix-caching turns it off.
         enable_prefix_caching=not args.no_prefix_caching,
+        # Multimodal preprocessor cache: disabled → re-preprocess every request.
+        mm_processor_cache_gb=0 if args.disable_mm_preprocessor_cache else None,
+        # Chunked mm input: default on; --disable-chunked-mm-input turns it off.
+        disable_chunked_mm_input=args.disable_chunked_mm_input,
     )
     sampling_params = SamplingParams(
         temperature=args.temperature,
