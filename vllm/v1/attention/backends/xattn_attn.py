@@ -170,6 +170,10 @@ class XAttentionImpl(AttentionImpl):
         self.vllm_flash_attn_version = get_flash_attn_version()
 
         try:
+            # Import inside __init__ so it only runs in the worker process
+            # (after vLLM forks EngineCore), avoiding CUDA re-init in fork.
+            import sys as _sys
+            _sys.path.insert(0, '/workspace/vllm')
             from xattn.src.Xattention import Xattention_prefill
             self._xattn_prefill = Xattention_prefill
             logger.info_once(

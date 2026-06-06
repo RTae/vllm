@@ -1,14 +1,9 @@
 __version__ = "0.0.2"
 
-# Pre-load torch shared libs so the CUDA extension can find libc10.so / libtorch.so
-import ctypes as _ctypes
-import os as _os
-import torch as _torch
-_torch_lib = _os.path.join(_os.path.dirname(_torch.__file__), "lib")
-for _lib in ("libc10.so", "libtorch.so", "libtorch_cuda.so", "libc10_cuda.so"):
-    _path = _os.path.join(_torch_lib, _lib)
-    if _os.path.exists(_path):
-        _ctypes.CDLL(_path, mode=_ctypes.RTLD_GLOBAL)
+# NOTE: We intentionally do NOT preload any torch shared libs here.
+# block_sparse_attn_cuda.so is only imported inside XAttentionImpl.__init__,
+# which runs in the vLLM worker process (after fork/spawn), so the linker
+# can find libc10.so through the worker's already-initialised torch.
 
 from block_sparse_attn.block_sparse_attn_interface import (
     block_sparse_attn_func,
