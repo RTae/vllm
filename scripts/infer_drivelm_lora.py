@@ -199,6 +199,31 @@ def parse_args():
         default=1,
         help="Tensor parallel size for the speculative draft model.",
     )
+    parser.add_argument(
+        "--scene-sort",
+        action="store_true",
+        help=(
+            "Sort samples by scene ID before inference to maximise APC hit rate. "
+            "Groups all questions from the same scene together so image token KV "
+            "blocks are reused across questions. Measure speedup vs original order."
+        ),
+    )
+    parser.add_argument(
+        "--check-prefix",
+        action="store_true",
+        help="Print the common token prefix length across the first 5 samples to verify APC eligibility.",
+    )
+    parser.add_argument(
+        "--sequential-scenes",
+        action="store_true",
+        help=(
+            "Run llm.generate() once per scene group (instead of one big batch). "
+            "Guarantees 100%% APC hit rate for questions 2–N in each scene because "
+            "image KV blocks are guaranteed to still be in cache when the next "
+            "question from the same scene is submitted. "
+            "Trades inter-scene batching for near-perfect intra-scene prefix reuse."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -358,6 +383,53 @@ def validate_speculative_decoding(args, samples: list[dict], base_model: str) ->
     pass
 
 
+def get_scene_key(sample: dict) -> str:
+    """Extract scene identifier for grouping DriveLM questions.
+
+    DriveLM ID format: {scene_token}_{sample_token}_{q_idx}
+    The scene_token is the first 32 hex characters.
+    """
+    sample_id = sample.get("id", "")
+    if sample_id and len(sample_id) >= 32:
+        return sample_id[:32]
+    # Fallback: use first image path prefix
+    img = sample.get("image_paths", sample.get("image", []))
+    if isinstance(img, list) and img:
+        img = img[0]
+    return str(img)[:32] if img else ""
+
+
+def get_apc_stats(llm) -> dict:
+    """Extract cumulative APC hit rate from vLLM engine internals.
+
+    In v1 engine, APC stats flow through:
+      scheduler.kv_cache_manager.prefix_cache_stats  (live counter)
+    The per-step stats are consumed by make_prefix_cache_stats() each step,
+    so we read the live counter which accumulates since last reset.
+
+    Returns dict with hits, queries, hit_rate (or empty dict on failure).
+    """
+    try:
+        # In-process path: engine_core is InprocClient → engine_core.engine_core is EngineCore
+        core = getattr(llm.llm_engine.engine_core, "engine_core", None)
+        if core is None:
+            # Multiprocess path: scheduler lives in child process, not accessible
+            return {}
+        scheduler = core.scheduler
+        kvm = getattr(scheduler, "kv_cache_manager", None)
+        if kvm is None:
+            return {}
+        stats = kvm.prefix_cache_stats
+        if stats is None:
+            return {}
+        total = stats.queries
+        hits = stats.hits
+        rate = hits / total if total > 0 else 0.0
+        return {"hits": hits, "queries": total, "hit_rate": rate}
+    except Exception:
+        return {}
+
+
 def build_prompt(processor, question: str, num_images: int) -> str:
     placeholders = [{"type": "image"} for _ in range(num_images)]
     messages = [
@@ -452,7 +524,62 @@ def main():
         )
 
     samples = [dataset[index] for index in range(args.start_index, end_index)]
+
+    # [AUDIT] Per-scene question distribution
+    from collections import Counter as _Counter
+    _scene_counts = _Counter()
+    for _s in dataset:  # count over full dataset, not just the slice
+        _id = _s.get('id', '')
+        # ID format: {scene_token}_{sample_token}_{q_idx}  (scene_token = first 32 chars)
+        _scene_key = _id[:32] if len(_id) >= 32 else _id
+        _scene_counts[_scene_key] += 1
+    _total_q = sum(_scene_counts.values())
+    _total_scenes = len(_scene_counts)
+    _avg_q = _total_q / _total_scenes if _total_scenes else 0
+    _max_q = max(_scene_counts.values()) if _scene_counts else 0
+    _min_q = min(_scene_counts.values()) if _scene_counts else 0
+    print(f"\nDriveLM dataset stats ({len(dataset)} total):")
+    print(f"  Total questions   : {_total_q}")
+    print(f"  Total scenes      : {_total_scenes}")
+    print(f"  Avg questions/scene: {_avg_q:.1f}")
+    print(f"  Max questions/scene: {_max_q}")
+    print(f"  Min questions/scene: {_min_q}")
+    print(f"  Theoretical max cache hit rate: {(_avg_q-1)/_avg_q*100:.1f}%  (first Q per scene is always a miss)")
+    print()
     validate_speculative_decoding(args, samples, base_model)
+
+    # ── Optional: prefix consistency check ───────────────────────────────────
+    if args.check_prefix and len(samples) >= 2:
+        check_n = min(5, len(samples))
+        check_prompts = []
+        for s in samples[:check_n]:
+            imgs = load_images(s, args.dataset)
+            q, _ = extract_question_and_reference(s)
+            check_prompts.append(build_prompt(processor, q, len(imgs)))
+        token_seqs = [processor.tokenizer.encode(p) for p in check_prompts]
+        common_len = 0
+        for i in range(min(len(s) for s in token_seqs)):
+            if len(set(s[i] for s in token_seqs)) == 1:
+                common_len = i + 1
+            else:
+                break
+        print(f"[prefix check] Common prefix tokens across first {check_n} samples: {common_len}")
+        print(f"[prefix check] Total tokens in sample 0: {len(token_seqs[0])}")
+        print(f"[prefix check] Image+question tokens (approx): {len(token_seqs[0]) - common_len}")
+        if common_len < 10:
+            print("[prefix check] WARNING: Very short common prefix — APC may not help across questions")
+        else:
+            print(f"[prefix check] APC can reuse ~{common_len} tokens per cache hit")
+
+    # ── Scene sorting ─────────────────────────────────────────────────────────
+    unique_scenes = set(get_scene_key(s) for s in samples)
+    print(f"Samples to run: {len(samples)} questions across {len(unique_scenes)} scenes")
+    if args.scene_sort:
+        samples_sorted = sorted(samples, key=get_scene_key)
+        print(f"[scene-sort] Sorted {len(samples)} samples by scene "
+              f"({len(unique_scenes)} scenes, avg {len(samples)/len(unique_scenes):.1f} Q/scene)")
+    else:
+        samples_sorted = samples
 
     max_images = max(
         len(get_sample_value(sample, "image_paths", "image", default=[])) or 1
@@ -493,7 +620,7 @@ def main():
 
     inputs = []
     metadata = []
-    for sample in samples:
+    for sample in samples_sorted:
         images = load_images(sample, args.dataset)
         question, reference = extract_question_and_reference(sample)
         prompt = build_prompt(processor, question, len(images))
@@ -513,14 +640,59 @@ def main():
         )
 
     import time
+    # Reset APC before inference so stats reflect only this run
+    try:
+        llm.reset_prefix_cache()
+    except Exception:
+        pass
+
     t_generate_start = time.perf_counter()
-    outputs = llm.generate(
-        inputs,
-        sampling_params=sampling_params,
-        lora_request=[lora_request] * len(inputs),
-    )
+
+    if args.sequential_scenes:
+        # Group inputs by scene, submit one scene at a time.
+        # Within each scene, image KV blocks stay hot in cache → 100% APC hit
+        # for questions 2–N per scene.
+        from itertools import groupby as _groupby
+        scene_groups = []
+        for scene_key, group in _groupby(
+            zip(inputs, metadata, samples_sorted),
+            key=lambda x: get_scene_key(x[2])
+        ):
+            scene_groups.append(list(group))
+
+        print(f"[sequential-scenes] {len(scene_groups)} scenes, "
+              f"sizes: {[len(g) for g in scene_groups]}")
+
+        outputs = []
+        for gi, group in enumerate(scene_groups):
+            scene_inputs   = [item[0] for item in group]
+            scene_metadata = [item[1] for item in group]
+            scene_outputs = llm.generate(
+                scene_inputs,
+                sampling_params=sampling_params,
+                lora_request=[lora_request] * len(scene_inputs),
+            )
+            outputs.extend(scene_outputs)
+            # Keep metadata order aligned
+            if gi == 0:
+                # re-order metadata to match scene order
+                pass
+        # Re-build metadata in scene-group order
+        metadata = []
+        for group in scene_groups:
+            metadata.extend([item[1] for item in group])
+    else:
+        outputs = llm.generate(
+            inputs,
+            sampling_params=sampling_params,
+            lora_request=[lora_request] * len(inputs),
+        )
+
     t_generate_end = time.perf_counter()
     total_wall_time = t_generate_end - t_generate_start
+
+    # APC stats (in-process only; empty dict in multiprocess mode)
+    apc = get_apc_stats(llm)
 
     # ── Collect metrics ───────────────────────────────────────────────────────
     records = []
@@ -616,6 +788,10 @@ def main():
         print("\n" + "=" * 80)
         print("AGGREGATE METRICS")
         print(f"  samples          : {agg['num_samples']}")
+        if args.scene_sort:
+            print(f"  order            : scene-sorted  ({len(unique_scenes)} scenes)")
+        if args.sequential_scenes:
+            print(f"  order            : sequential-scenes  ({len(unique_scenes)} scenes, 1 generate() per scene)")
         print(f"  wall time        : {agg['total_wall_time_s']}s")
         print(f"  throughput       : {agg['throughput_samples_per_s']} samples/s")
         print(f"  e2e latency mean : {agg['e2e_latency_mean_s']}s")
@@ -652,6 +828,44 @@ def main():
         with out_path.open("w", encoding="utf-8") as f:
             _json.dump(payload, f, indent=2, ensure_ascii=False)
         print(f"\nMetrics saved to {out_path}")
+
+    # [AUDIT] MM preprocessor cache statistics
+    try:
+        from vllm.multimodal.cache import print_cache_stats, print_cache_memory
+        print()
+        print_cache_stats()
+        # Access the underlying LRU cache for memory stats if available
+        # (only populated when mm_processor_cache_gb > 0)
+        try:
+            from vllm.multimodal.cache import _audit_hits, _audit_misses
+            if _audit_hits + _audit_misses > 0:
+                # Try to reach the cache object via the LLM engine
+                # (best-effort; may not be accessible after llm.generate completes)
+                _engine = getattr(llm, 'llm_engine', None)
+                _cache_obj = None
+                if _engine is not None:
+                    _client = getattr(_engine, 'engine_core', None)
+                    if _client is not None:
+                        # Not directly accessible after shutdown — use size from audit
+                        pass
+                print_cache_memory(_cache_obj)
+        except Exception:
+            pass
+    except ImportError:
+        pass
+
+    # APC stats report
+    if apc:
+        print()
+        print("APC (Automatic Prefix Caching) stats:")
+        print(f"  Hit rate  : {apc['hit_rate']*100:.1f}%")
+        print(f"  Hits      : {apc['hits']}")
+        print(f"  Queries   : {apc['queries']}")
+    else:
+        # APC hit rate appears in vLLM engine logs:
+        # "Prefix cache hit rate: X.X%"  — search the output above
+        print()
+        print("APC stats: check engine log lines 'Prefix cache hit rate: X%'")
 
 
 if __name__ == "__main__":

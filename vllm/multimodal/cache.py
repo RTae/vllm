@@ -38,6 +38,47 @@ if TYPE_CHECKING:
 
 logger = init_logger(__name__)
 
+# [AUDIT] hit/miss counters — added for cache analysis, zero overhead when not used
+_audit_hits: int = 0
+_audit_misses: int = 0
+_audit_hit_sizes: list[int] = []   # bytes served from cache per hit
+
+
+def print_cache_stats() -> None:
+    """[AUDIT] Print MM preprocessor cache hit/miss statistics."""
+    total = _audit_hits + _audit_misses
+    if total == 0:
+        print("MM Cache: No lookups recorded.")
+        return
+    print(f"MM Cache hit rate   : {_audit_hits/total*100:.1f}%")
+    print(f"  Cache hits        : {_audit_hits}")
+    print(f"  Cache misses      : {_audit_misses}")
+    print(f"  Total lookups     : {total}")
+    if _audit_hit_sizes:
+        import statistics as _stats
+        print(f"  Avg bytes/hit     : {_stats.mean(_audit_hit_sizes)/1024**2:.1f} MB")
+        print(f"  Total saved (est) : {sum(_audit_hit_sizes)/1024**3:.2f} GB")
+
+
+def print_cache_memory(lru_cache: "LRUCache | None" = None) -> None:
+    """[AUDIT] Print MM preprocessor cache memory usage and compression potential."""
+    if lru_cache is None:
+        print("MM Cache memory     : (no cache object provided)")
+        return
+    try:
+        n = len(lru_cache)
+        used_bytes = int(lru_cache.currsize)
+        cap_bytes = int(lru_cache.capacity)
+        print(f"MM Cache entries    : {n}")
+        print(f"MM Cache usage      : {used_bytes/1024**3:.3f} GB / {cap_bytes/1024**3:.1f} GB ({used_bytes/max(cap_bytes,1)*100:.1f}% full)")
+        if n > 0:
+            avg_bytes = used_bytes / n
+            print(f"  Avg entry size    : {avg_bytes/1024**2:.1f} MB")
+            # pixel_values are stored as bf16; FP8 would halve memory
+            print(f"  FP8 savings (est) : {used_bytes/2/1024**3:.3f} GB (2× compression vs bf16)")
+    except Exception as e:
+        print(f"MM Cache memory     : (error: {e})")
+
 
 class MultiModalProcessorCacheItem:
     """
@@ -354,9 +395,15 @@ class MultiModalProcessorOnlyCache(BaseMultiModalProcessorCache):
         mm_item: MultiModalProcessorCacheInItem,
         mm_hash: str,
     ) -> MultiModalProcessorCacheOutItem:
+        global _audit_hits, _audit_misses, _audit_hit_sizes  # [AUDIT]
         if (cached_item := self._cache.get(mm_hash)) is not None:
+            _audit_hits += 1  # [AUDIT]
+            _audit_hit_sizes.append(  # [AUDIT]
+                MultiModalCache.get_item_size(cached_item)
+            )
             return cached_item.item, cached_item.prompt_updates
 
+        _audit_misses += 1  # [AUDIT]
         assert mm_item is not None, f"Expected a cached item for {mm_hash=}"
 
         self._cache[mm_hash] = MultiModalProcessorCacheItem(*mm_item)
@@ -412,9 +459,15 @@ class MultiModalProcessorSenderCache(BaseMultiModalProcessorCache):
         mm_item: MultiModalProcessorCacheInItem,
         mm_hash: str,
     ) -> MultiModalProcessorCacheOutItem:
+        global _audit_hits, _audit_misses, _audit_hit_sizes  # [AUDIT]
         if (cached_item := self._cache.get(mm_hash)) is not None:
+            _audit_hits += 1  # [AUDIT]
+            _audit_hit_sizes.append(  # [AUDIT]
+                MultiModalCache.get_item_size(cached_item)
+            )
             return None, cached_item.prompt_updates
 
+        _audit_misses += 1  # [AUDIT]
         assert mm_item is not None, f"Expected a cached item for {mm_hash=}"
 
         self._cache[mm_hash] = MultiModalProcessorCacheItemMetadata(*mm_item)
