@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Ablation study: all inference configurations from README
-# Skips SpargeAttention (not yet stable).
+# Ablation study: all inference configurations
+# New in this version:
+#   Section 5: Chunked-prefill token budget (--max-num-batched-tokens 16384)
+#   Section 6: Sequential scene inference (--sequential-scenes)
+#   Section 7: Sparse attention backends (SPARGE_ATTN, XATTN)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +19,8 @@ EAGLE3_MODEL="${EAGLE3_MODEL:-/workspace/.hf_home/qwen3-vl-8b-eagle3}"
 DATASET="${DATASET:-/workspace/vllm/datasets/DriveLM_nuScenes/split/val}"
 NUM_SAMPLES="${NUM_SAMPLES:--1}"
 NUM_SPEC_TOKENS="${NUM_SPEC_TOKENS:-5}"
+# Token budget for chunked prefill (DriveLM seqs ~8421 tokens → 2 chunks at 8192 default)
+MAX_BATCHED_TOKENS="${MAX_BATCHED_TOKENS:-16384}"
 
 # ── Results directory ────────────────────────────────────────────────────────
 RESULTS_DIR="$REPO_ROOT/ablation_results"
@@ -48,7 +53,7 @@ run_experiment() {
   if [[ $exit_code -eq 0 ]]; then
     echo "  ✓ $name  wall=${elapsed}s" | tee -a "$SUMMARY_FILE"
     if [[ -f "$metrics_file" ]]; then
-      python3 - "$metrics_file" >> "$SUMMARY_FILE" <<'PYEOF'
+      "$PYTHON" - "$metrics_file" >> "$SUMMARY_FILE" <<'PYEOF'
 import json, sys
 data = json.load(open(sys.argv[1]))
 a = data.get("aggregate", {})
@@ -106,9 +111,35 @@ run_experiment "00_baseline" \
 # ════════════════════════════════════════════════════════════════════════════════
 print_section "ATTENTION BACKENDS (all caches off)"
 
-# 1. FlashAttention (default backend)
-run_experiment "01_attn_flash" \
+# 1a. FlashAttention (default backend)
+run_experiment "01a_attn_flash" \
   "${COMMON[@]}" \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
+
+# 1b. FlashInfer
+run_experiment "01b_attn_flashinfer" \
+  "${COMMON[@]}" \
+  --attention-backend FLASHINFER \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
+
+# 1c. SPARGE_ATTN (topk=0.5) — sparse prefill, paged kernel, no gather
+SPARGE_ATTN_TOPK=0.5 \
+run_experiment "01c_attn_sparge_topk0.5" \
+  "${COMMON[@]}" \
+  --attention-backend SPARGE_ATTN \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
+
+# 1d. XAttention (topk=0.5, stride=8) — block-level importance scoring
+XATTN_THRESHOLD=0.5 XATTN_STRIDE=8 \
+run_experiment "01d_attn_xattn_topk0.5" \
+  "${COMMON[@]}" \
+  --attention-backend XATTN \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
   --disable-chunked-mm-input
@@ -203,6 +234,83 @@ if [[ -d "$EAGLE3_MODEL" ]]; then
 else
   echo "  ⚠  SKIP 04_all: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 5: Chunked-prefill token budget
+# DriveLM sequences are ~8421 tokens (6 cameras). Default max_num_batched_tokens=8192
+# splits each into 2 prefill chunks. Setting 16384 processes in 1 chunk, saving
+# one full 28-layer LLM forward pass (~465ms/request).
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "CHUNKED PREFILL BUDGET (--max-num-batched-tokens)"
+
+# 5a. Default (vLLM heuristic, typically 8192)
+run_experiment "05a_batched_default" \
+  "${COMMON[@]}" \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
+
+# 5b. 16384 — fits each DriveLM sequence in 1 prefill step
+run_experiment "05b_batched_16384" \
+  "${COMMON[@]}" \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input \
+  --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+
+# 5c. 16384 + APC: best combined throughput setting
+run_experiment "05c_batched_16384_apc" \
+  "${COMMON[@]}" \
+  --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 6: Sequential scene inference
+# Submits one scene at a time (all questions per scene in one generate() call).
+# Guarantees 100% intra-scene APC hit rate — image KV blocks cannot be evicted
+# between questions from the same scene.
+# Trade-off: lower GPU utilisation (-28% throughput), but 15× lower p50 latency.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "SEQUENTIAL SCENE INFERENCE (--sequential-scenes)"
+
+# 6a. Default batch (all 100 at once) — reference for this section
+run_experiment "06a_batch_all" \
+  "${COMMON[@]}" \
+  --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+
+# 6b. Sequential scenes (one generate() per scene)
+run_experiment "06b_sequential_scenes" \
+  "${COMMON[@]}" \
+  --max-num-batched-tokens "$MAX_BATCHED_TOKENS" \
+  --sequential-scenes
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 7: Sparse attention + 16384 token budget
+# Compare sparse backends with the larger token budget for fair comparison.
+# At ~8K tokens attention = 0.5% of prefill; gains expected at ≥32K tokens.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "SPARSE ATTENTION + 16384 BUDGET (no caches)"
+
+export VLLM_WORKER_MULTIPROC_METHOD=spawn
+
+# 7a. SPARGE_ATTN + 16384
+SPARGE_ATTN_TOPK=0.5 \
+run_experiment "07a_sparge_topk0.5_b16384" \
+  "${COMMON[@]}" \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input \
+  --attention-backend SPARGE_ATTN \
+  --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+
+# 7b. XATTN + 16384
+XATTN_THRESHOLD=0.5 XATTN_STRIDE=8 \
+run_experiment "07b_xattn_topk0.5_b16384" \
+  "${COMMON[@]}" \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input \
+  --attention-backend XATTN \
+  --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
 
 # ── Print summary ─────────────────────────────────────────────────────────────
 echo ""
