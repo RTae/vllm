@@ -187,14 +187,16 @@ Optional tuning via environment variables:
 | `XATTN_STRIDE` | `8` | Estimation stride (higher = cheaper estimate) |
 
 ```bash
-VLLM_WORKER_MULTIPROC_METHOD=spawn XATTN_THRESHOLD=0.7 XATTN_STRIDE=8 \
+XATTN_THRESHOLD=0.5 XATTN_STRIDE=8 \
   python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 100 \
   --attention-backend XATTN \
-  --no-prefix-caching
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
 ```
 
 ### Caching
