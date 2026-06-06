@@ -268,49 +268,49 @@ class XAttentionImpl(AttentionImpl):
         block_table_gpu = attn_metadata.block_table
         num_reqs = len(query_start_loc) - 1
 
+        # Check if every sequence in the batch is eligible for XAttention:
+        #   - q_len == kv_len  (full first-prefill, Q starts at position 0 of K)
+        #   - q_len >= _XATTN_MIN_PREFILL_LEN  (long enough to benefit)
+        # If any sequence fails these criteria (decode-in-prefill-batch, chunked
+        # prefill, short prefill), fall back to the paged FlashAttention for the
+        # ENTIRE batch — this avoids unsafe dense KV gather for mixed batches.
+        all_xattn_eligible = all(
+            (query_start_loc[i + 1] - query_start_loc[i]) == int(seq_lens[i])
+            and (query_start_loc[i + 1] - query_start_loc[i]) >= _XATTN_MIN_PREFILL_LEN
+            for i in range(num_reqs)
+        )
+
+        if not all_xattn_eligible:
+            # Paged FlashAttention for the whole batch — correct for all cases.
+            flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                out=output,
+                cu_seqlens_q=attn_metadata.query_start_loc,
+                max_seqlen_q=attn_metadata.max_query_len,
+                seqused_k=attn_metadata.seq_lens,
+                max_seqlen_k=attn_metadata.max_seq_len,
+                softmax_scale=self.scale,
+                causal=attn_metadata.causal,
+                alibi_slopes=None,
+                window_size=None,
+                block_table=block_table_gpu,
+                softcap=self.logits_soft_cap,
+                scheduler_metadata=attn_metadata.scheduler_metadata,
+                fa_version=self.vllm_flash_attn_version,
+            )
+            return
+
+        # All sequences are full first-prefills — run XAttention per sequence.
         for i in range(num_reqs):
             q_start = query_start_loc[i]
             q_end = query_start_loc[i + 1]
             q_len = q_end - q_start
             kv_len = int(seq_lens[i])
 
-            if q_len == 0:
-                continue
-
             q_seq = query[q_start:q_end].contiguous()  # [q_len, H, D]
 
-            # Short sequences: fall back to dense FlashAttention
-            # flash_attn handles GQA natively, so do NOT expand KV heads
-            if q_len < _XATTN_MIN_PREFILL_LEN:
-                k_b, v_b = self._gather_kv_dense(
-                    key_cache, value_cache, block_table_gpu[i], kv_len,
-                    expand_gqa=False,
-                )
-                # [1, Hkv, N, D] → [N, Hkv, D]
-                k_seq = k_b[0].permute(1, 0, 2)
-                v_seq = v_b[0].permute(1, 0, 2)
-                cu_seqlens_q = torch.tensor(
-                    [0, q_len], dtype=torch.int32, device=query.device
-                )
-                seqused_k = torch.tensor(
-                    [kv_len], dtype=torch.int32, device=query.device
-                )
-                flash_attn_varlen_func(
-                    q=q_seq,
-                    k=k_seq,
-                    v=v_seq,
-                    out=output[q_start:q_end],
-                    cu_seqlens_q=cu_seqlens_q,
-                    max_seqlen_q=q_len,
-                    seqused_k=seqused_k,
-                    max_seqlen_k=kv_len,
-                    softmax_scale=self.scale,
-                    causal=True,
-                    fa_version=self.vllm_flash_attn_version,
-                )
-                continue
-
-            # Long sequences: use XAttention sparse prefill
             k_b, v_b = self._gather_kv_dense(
                 key_cache, value_cache, block_table_gpu[i], kv_len
             )
@@ -326,44 +326,36 @@ class XAttentionImpl(AttentionImpl):
                     norm=self.scale * math.sqrt(self.head_size),
                     threshold=self.threshold,
                     block_size=self.block_size,
-                    use_triton=False,  # A100 is sm80, triton kernel needs sm100
+                    use_triton=False,  # A100 is sm80; triton kernel needs sm100
                     causal=True,
-                )  # [1, H, q_len, D]  (batch=1)
-                # [1, H, q_len, D] → [q_len, H, D]
+                )  # [1, H, q_len, D]
                 output[q_start:q_end] = out_b[0].permute(1, 0, 2)
             except Exception as exc:
-                # On any xattn error fall back to dense FlashAttention
                 logger.warning(
                     "XAttention prefill failed (seq_idx=%d, q_len=%d, "
-                    "kv_len=%d): %s. Falling back to FlashAttention.",
+                    "kv_len=%d): %s. Falling back to paged FlashAttention.",
                     i, q_len, kv_len, exc,
                 )
-                # Re-gather without GQA expansion for FlashAttention
-                k_b2, v_b2 = self._gather_kv_dense(
-                    key_cache, value_cache, block_table_gpu[i], kv_len,
-                    expand_gqa=False,
-                )
-                k_seq = k_b2[0].permute(1, 0, 2)
-                v_seq = v_b2[0].permute(1, 0, 2)
-                cu_seqlens_q = torch.tensor(
-                    [0, q_len], dtype=torch.int32, device=query.device
-                )
-                seqused_k = torch.tensor(
-                    [kv_len], dtype=torch.int32, device=query.device
-                )
+                # Per-sequence paged fallback using the full block table
                 flash_attn_varlen_func(
-                    q=q_seq,
-                    k=k_seq,
-                    v=v_seq,
-                    out=output[q_start:q_end],
-                    cu_seqlens_q=cu_seqlens_q,
-                    max_seqlen_q=q_len,
-                    seqused_k=seqused_k,
-                    max_seqlen_k=kv_len,
+                    q=query,
+                    k=key_cache,
+                    v=value_cache,
+                    out=output,
+                    cu_seqlens_q=attn_metadata.query_start_loc,
+                    max_seqlen_q=attn_metadata.max_query_len,
+                    seqused_k=attn_metadata.seq_lens,
+                    max_seqlen_k=attn_metadata.max_seq_len,
                     softmax_scale=self.scale,
-                    causal=True,
+                    causal=attn_metadata.causal,
+                    alibi_slopes=None,
+                    window_size=None,
+                    block_table=block_table_gpu,
+                    softcap=self.logits_soft_cap,
+                    scheduler_metadata=attn_metadata.scheduler_metadata,
                     fa_version=self.vllm_flash_attn_version,
                 )
+                return  # output already filled for all seqs by the paged call
 
     # ------------------------------------------------------------------
     # Decode: standard FlashAttention (paged, dense)
