@@ -66,7 +66,8 @@ Find the full list of supported models [here](https://docs.vllm.ai/en/latest/mod
 ```bash
 uv pip install -e . --torch-backend=auto
 uv pip install datasets transformers peft
-uv pip install flash-attn --no-build-isolation
+MAX_JOBS=4 uv pip install flash-attn --no-build-isolation
+MAX_JOBS=4 uv pip install minference --no-build-isolation
 uv pip install --python .venv/bin/python --no-build-isolation -e ./spas_sage_attn -v
 ```
 
