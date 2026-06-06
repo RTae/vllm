@@ -222,15 +222,23 @@ fi
 
 # ════════════════════════════════════════════════════════════════════════════════
 # Section 4: Apply all
-# EAGLE3 + FlashAttention + all caches
+# EAGLE3 + FlashAttention + all caches + 16384 token budget
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "APPLY ALL (Eagle3 + FlashAttention + all caches)"
+print_section "APPLY ALL (Eagle3 + FlashAttention + all caches + 16384 budget)"
 
 if [[ -d "$EAGLE3_MODEL" ]]; then
-  run_experiment "04_all_eagle3_flash_all_caches" \
+  # 4a. Original apply-all (without 16384 budget — for backward compat)
+  run_experiment "04a_all_eagle3_flash_all_caches" \
     "${COMMON[@]}" \
     --eagle3 "$EAGLE3_MODEL" \
     --num-speculative-tokens "$NUM_SPEC_TOKENS"
+
+  # 4b. Apply-all + 16384 budget — the recommended best configuration
+  run_experiment "04b_all_eagle3_flash_all_caches_b16384" \
+    "${COMMON[@]}" \
+    --eagle3 "$EAGLE3_MODEL" \
+    --num-speculative-tokens "$NUM_SPEC_TOKENS" \
+    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
 else
   echo "  ⚠  SKIP 04_all: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
