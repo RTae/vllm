@@ -99,31 +99,14 @@ def parse_args():
         help="Enable trust_remote_code for base model loading.",
     )
     parser.add_argument(
-        "--sparge-attn",
-        action="store_true",
-        help=(
-            "Use SpargeAttention for prefill (sparse) and FlashAttention for "
-            "decode. Requires spas_sage_attn to be installed."
-        ),
-    )
-    parser.add_argument(
-        "--sparge-topk",
-        type=float,
-        default=0.5,
-        help=(
-            "Fraction of KV blocks retained per head during SpargeAttention "
-            "prefill. 1.0 = dense, 0.5 = keep 50%% of blocks (default)."
-        ),
-    )
-    parser.add_argument(
         "--attention-backend",
         type=str,
         default=None,
         metavar="BACKEND",
         help=(
             "Override the attention backend. Options: FLASH_ATTN (default), "
-            "FLASHINFER (no FlashAttention), TRITON_ATTN (no FlashAttention, Triton only). "
-            "Ignored when --sparge-attn is set."
+            "FLASHINFER, TRITON_ATTN, XATTN (sparse prefill via XAttention). "
+            "XATTN and SPARGE_ATTN automatically enable eager mode."
         ),
     )
     parser.add_argument(
@@ -406,9 +389,6 @@ def main():
     max_lora_rank = adapter_config.get("r", 64)
     speculative_config = None
 
-    if args.sparge_attn:
-        os.environ["SPARGE_ATTN_TOPK"] = str(args.sparge_topk)
-
     if args.speculative_decoding and args.ngram:
         raise ValueError("--speculative-decoding and --ngram are mutually exclusive.")
 
@@ -489,12 +469,10 @@ def main():
         limit_mm_per_prompt={"image": max_images},
         trust_remote_code=args.trust_remote_code,
         speculative_config=speculative_config,
-        attention_backend=(
-            "SPARGE_ATTN" if args.sparge_attn else args.attention_backend
-        ),
-        # SpargeAttention uses Python-level per-sequence iteration in its
-        # forward pass and is incompatible with torch.compile/CUDA graphs.
-        enforce_eager=args.sparge_attn or False,
+        attention_backend=args.attention_backend,
+        # XATTN and SPARGE_ATTN use Python-level per-sequence iteration and
+        # are incompatible with torch.compile/CUDA graphs.
+        enforce_eager=args.attention_backend in ("XATTN", "SPARGE_ATTN"),
         # Enable per-request metrics so output.metrics is populated.
         disable_log_stats=False,
         # APC is on by default; --no-prefix-caching turns it off.
