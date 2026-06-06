@@ -163,6 +163,41 @@ python scripts/infer_drivelm_lora.py \
   --disable-chunked-mm-input
 ```
 
+#### XAttention (sparse prefill)
+XAttention accelerates long-context prefill by estimating which 128-token KV blocks each query block attends to (cheap strided dot-product), then computing only those selected blocks with `block_sparse_attn`. Decode falls back to paged FlashAttention.
+
+> **Note:** `VLLM_WORKER_MULTIPROC_METHOD=spawn` is required because the `block_sparse_attn` CUDA extension is loaded inside the worker process.
+
+```bash
+VLLM_WORKER_MULTIPROC_METHOD=spawn python scripts/infer_drivelm_lora.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 100 \
+  --attention-backend XATTN \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
+```
+
+Optional tuning via environment variables:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `XATTN_THRESHOLD` | `0.8` | Fraction of KV blocks to retain (lower = sparser/faster) |
+| `XATTN_STRIDE` | `8` | Estimation stride (higher = cheaper estimate) |
+
+```bash
+VLLM_WORKER_MULTIPROC_METHOD=spawn XATTN_THRESHOLD=0.7 XATTN_STRIDE=8 \
+  python scripts/infer_drivelm_lora.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 100 \
+  --attention-backend XATTN \
+  --no-prefix-caching
+```
+
 ### Caching
 
 #### APC only
