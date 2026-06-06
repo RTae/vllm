@@ -19,6 +19,7 @@ retained per attention head.  A value of 1.0 is equivalent to dense attention.
 """
 
 import math
+import os
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -42,6 +43,9 @@ from vllm.v1.attention.backends.fa_utils import (
 from vllm.v1.attention.backends.flash_attn import (
     FlashAttentionMetadata,
     FlashAttentionMetadataBuilder,
+)
+from vllm.v1.attention.backends.paged_sparse_attn_kernel import (
+    paged_sparse_attn_kernel,
 )
 from vllm.v1.kv_cache_interface import AttentionSpec
 
@@ -173,8 +177,9 @@ class SpargeAttentionImpl(AttentionImpl):
             from spas_sage_attn import spas_sage2_attn_meansim_topk_cuda
             self._sparge_fn = spas_sage2_attn_meansim_topk_cuda
             logger.info_once(
-                "SpargeAttention loaded (topk=%.2f). Prefill will use sparse "
-                "attention; decode will fall back to FlashAttention.",
+                "SpargeAttention loaded (topk=%.2f). Prefill uses paged sparse "
+                "Triton kernel (no gather, native GQA); decode falls back to "
+                "FlashAttention.",
                 self.topk,
             )
         except ImportError as exc:
@@ -182,6 +187,10 @@ class SpargeAttentionImpl(AttentionImpl):
                 "SpargeAttention backend requires the spas_sage_attn package. "
                 "Install it with: uv pip install -e ./spas_sage_attn"
             ) from exc
+
+        # Whether to emit debug diff vs FlashAttention (set SPARGE_DEBUG=1)
+        self._debug = bool(os.environ.get("SPARGE_DEBUG"))
+        self._debug_first_call = True
 
     # ------------------------------------------------------------------
     # KV-cache write (identical to FlashAttention)
@@ -210,27 +219,168 @@ class SpargeAttentionImpl(AttentionImpl):
         return key_cache, value_cache
 
     # ------------------------------------------------------------------
-    # Prefill: use SpargeAttention (sparse)
+    # Sparse mask computation (block-level importance scoring)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def compute_sparse_mask(
+        q_seq: torch.Tensor,   # [N, H_q, D]  dense, no copy
+        k_seq: torch.Tensor,   # [N, H_kv, D] dense, no copy
+        topk: float,
+        page_size: int,
+    ) -> torch.Tensor:
+        """Compute a per-page boolean sparse mask using a single representative
+        query token (the last token — most information-rich under causal attention).
+
+        Scoring: last_q_token [H_kv, D] @ k_page_mean [P, H_kv, D]^T → [P] scores.
+        This is O(P × H_kv × D) per layer, ~4× faster than the O(P²) approach.
+        GQA heads are averaged before scoring.
+        Always keeps first page (attention sink) and last page (recent tokens).
+
+        Args:
+            q_seq:     [N, H_q, D]   query tokens (dense)
+            k_seq:     [N, H_kv, D]  key tokens (dense)
+            topk:      fraction of pages to keep (0.5 = keep 50%)
+            page_size: tokens per page (must match vLLM block size)
+
+        Returns:
+            sparse_mask: [num_pages] bool, True = attend this page
+        """
+        N, H_q, D = q_seq.shape
+        H_kv = k_seq.shape[1]
+        GQA_RATIO = H_q // H_kv
+        num_pages = (N + page_size - 1) // page_size
+
+        if num_pages <= 2:
+            return torch.ones(num_pages, dtype=torch.bool, device=q_seq.device)
+
+        # Pad K to multiple of page_size
+        pad_len = num_pages * page_size - N
+        k_f = k_seq.to(torch.float32)
+        if pad_len > 0:
+            k_f = torch.nn.functional.pad(k_f, (0, 0, 0, 0, 0, pad_len))
+
+        # KV page means: [P, H_kv, D]
+        k_means = k_f.reshape(num_pages, page_size, H_kv, D).mean(dim=1)
+
+        # Use last query token as representative — it must attend the most
+        # recent context and is the most demanding under causal attention.
+        q_rep = q_seq[-1].to(torch.float32)  # [H_q, D]
+
+        # GQA: average query heads within each KV-head group → [H_kv, D]
+        if GQA_RATIO > 1:
+            q_rep = q_rep.reshape(H_kv, GQA_RATIO, D).mean(dim=1)
+
+        # Scores: [P] — dot product of representative query vs each page mean
+        scores = torch.einsum('hd,phd->p', q_rep, k_means) / (D ** 0.5)
+
+        # Always attend first (sink) and last (recency) pages
+        scores[0] = float('inf')
+        scores[-1] = float('inf')
+
+        # Keep top-k% pages
+        num_keep = max(2, int(topk * num_pages))
+        threshold = torch.topk(scores, num_keep).values.min()
+        return scores >= threshold  # [num_pages] bool
+
+    # ------------------------------------------------------------------
+    # Single-sequence paged sparse attention launcher
+    # ------------------------------------------------------------------
+
+    def _paged_sparse_attn_single(
+        self,
+        q_seq: torch.Tensor,       # [N, H_q, D]
+        key_cache: torch.Tensor,   # [num_blocks, block_size, H_kv, D]
+        value_cache: torch.Tensor,
+        block_table_row: torch.Tensor,  # [max_pages] int32
+        seq_len: int,
+        sparse_mask: torch.Tensor, # [num_pages] bool
+    ) -> torch.Tensor:
+        """Launch paged_sparse_attn_kernel for a single sequence."""
+        N, H_q, D = q_seq.shape
+        page_size = key_cache.shape[1]
+        H_kv = key_cache.shape[2]
+        GQA_RATIO = H_q // H_kv
+        BLOCK_M = 64
+        BLOCK_N = page_size
+        num_pages = sparse_mask.shape[0]
+        max_pages = block_table_row.shape[0]
+
+        # Wrap single sequence in batch-1 tensors
+        block_table_b1 = block_table_row.unsqueeze(0)           # [1, max_pages]
+        sparse_mask_int = sparse_mask.to(torch.int8)
+        # Pad sparse_mask_int to max_pages if needed
+        if num_pages < max_pages:
+            pad = torch.zeros(max_pages - num_pages, dtype=torch.int8,
+                              device=q_seq.device)
+            sparse_mask_int = torch.cat([sparse_mask_int, pad])
+        sparse_mask_b1 = sparse_mask_int.unsqueeze(0)           # [1, max_pages]
+
+        seq_lens_t = torch.tensor([seq_len], dtype=torch.int32, device=q_seq.device)
+        cu_seqlens_t = torch.tensor([0], dtype=torch.int32, device=q_seq.device)
+        num_q_blocks = (N + BLOCK_M - 1) // BLOCK_M
+
+        output = torch.empty_like(q_seq)
+
+        grid = (1, H_q, num_q_blocks)
+        paged_sparse_attn_kernel[grid](
+            q_seq, key_cache, value_cache,
+            output,
+            block_table_b1,
+            sparse_mask_b1,
+            seq_lens_t,
+            cu_seqlens_t,
+            # Q strides
+            q_seq.stride(0), q_seq.stride(1), q_seq.stride(2),
+            # K strides
+            key_cache.stride(0), key_cache.stride(1),
+            key_cache.stride(2), key_cache.stride(3),
+            # V strides
+            value_cache.stride(0), value_cache.stride(1),
+            value_cache.stride(2), value_cache.stride(3),
+            # Out strides
+            output.stride(0), output.stride(1), output.stride(2),
+            # block_table strides
+            block_table_b1.stride(0), block_table_b1.stride(1),
+            # sparse_mask strides
+            sparse_mask_b1.stride(0), sparse_mask_b1.stride(1),
+            # constexpr
+            H_q=H_q,
+            H_kv=H_kv,
+            GQA_RATIO=GQA_RATIO,
+            HEAD_DIM=D,
+            PAGE_SIZE=page_size,
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+            # scalar
+            softmax_scale=self.scale,
+            max_pages_per_seq=max_pages,
+        )
+        return output
+
+    # ------------------------------------------------------------------
+    # Prefill: paged sparse Triton kernel (no gather, native GQA)
     # ------------------------------------------------------------------
 
     def _forward_prefill_sparge(
         self,
-        query: torch.Tensor,          # [total_q, H, D]
-        key_raw: torch.Tensor,        # [total_q, Hkv, D] — dense, from forward() args
-        value_raw: torch.Tensor,      # [total_q, Hkv, D] — dense, from forward() args
-        key_cache: torch.Tensor,      # [num_blocks, block_size, Hkv, D] — paged (fallback)
+        query: torch.Tensor,          # [total_q, H_q, D]
+        key_raw: torch.Tensor,        # [total_q, H_kv, D] — dense, from forward()
+        value_raw: torch.Tensor,      # [total_q, H_kv, D] — dense, from forward()
+        key_cache: torch.Tensor,      # [num_blocks, block_size, H_kv, D]
         value_cache: torch.Tensor,
         attn_metadata: SpargeAttentionMetadata,
         output: torch.Tensor,
     ) -> None:
-        """Run SpargeAttention on prefill tokens.
+        """Run sparse prefill using the paged Triton kernel.
 
-        For full first-prefills (q_len == kv_len), key_raw/value_raw are the
-        already-dense tensors from forward() — no paged-cache gather needed.
-        This eliminates the per-layer index_select overhead (~100ms/sequence).
+        Eliminates both overheads from the original SpargeAttn approach:
+          1. index_select (paged → dense gather):   ~3.6ms/layer × 28 = 101ms
+          2. repeat_interleave (GQA head expand):   ~1.9ms/layer × 28 =  53ms
 
-        For mixed batches (chunked prefill, decode-alongside-prefill), falls
-        back to the paged FlashAttention path for the entire batch.
+        The Triton kernel reads k_cache/v_cache pages directly via block_table,
+        applies the sparse mask BEFORE loading any KV, and handles GQA natively
+        via  kv_head = q_head // GQA_RATIO  inside the kernel.
         """
         query_start_loc = attn_metadata.query_start_loc.cpu().tolist()
         seq_lens = attn_metadata.seq_lens.cpu().tolist()
@@ -238,7 +388,7 @@ class SpargeAttentionImpl(AttentionImpl):
         num_reqs = len(query_start_loc) - 1
 
         # All sequences must be full first-prefills (q_len == kv_len, >= 128)
-        # for SpargeAttention to be both correct and beneficial.
+        # for sparse attention to be correct and beneficial.
         all_sparge_eligible = all(
             (query_start_loc[i + 1] - query_start_loc[i]) == int(seq_lens[i])
             and (query_start_loc[i + 1] - query_start_loc[i]) >= 128
@@ -267,43 +417,88 @@ class SpargeAttentionImpl(AttentionImpl):
             )
             return
 
-        # All sequences are full first-prefills.
-        # key_raw/value_raw are already the dense KV for the current step —
-        # NO gather from paged cache needed, saving ~3.6ms/layer × 28 layers.
+        # All sequences are full first-prefills — use paged sparse Triton kernel.
+        page_size = key_cache.shape[1]
+        # Minimum sequence length for the paged sparse kernel to beat FlashAttention.
+        # Below this threshold FA is faster because page iteration overhead dominates.
+        MIN_PAGED_SPARSE_LEN = int(os.environ.get("SPARGE_MIN_LEN", "16384"))
+
         for i in range(num_reqs):
             q_start = query_start_loc[i]
             q_end = query_start_loc[i + 1]
-            q_len = q_end - q_start
             kv_len = int(seq_lens[i])
 
-            q_seq = query[q_start:q_end].contiguous()
+            # Dense slices — no copy, no gather, no GQA expand
+            q_seq = query[q_start:q_end]    # [N, H_q, D]
+            k_seq = key_raw[q_start:q_end]  # [N, H_kv, D]
+            v_seq = value_raw[q_start:q_end]  # noqa: F841 (used via paged kernel)
 
-            # Use the raw dense tensors directly — already in memory, no copy.
-            k_seq = key_raw[q_start:q_end].contiguous()    # [kv_len, Hkv, D]
-            v_seq = value_raw[q_start:q_end].contiguous()  # [kv_len, Hkv, D]
+            # For sequences below the threshold, paged kernel overhead exceeds
+            # sparse savings — fall back to dense FlashAttention for this sequence.
+            if kv_len < MIN_PAGED_SPARSE_LEN:
+                cu_q = torch.tensor([0, kv_len], dtype=torch.int32, device=query.device)
+                flash_attn_varlen_func(
+                    q=q_seq,
+                    k=key_cache,
+                    v=value_cache,
+                    out=output[q_start:q_end],
+                    cu_seqlens_q=cu_q,
+                    max_seqlen_q=kv_len,
+                    seqused_k=torch.tensor([kv_len], dtype=torch.int32, device=query.device),
+                    max_seqlen_k=kv_len,
+                    softmax_scale=self.scale,
+                    causal=True,
+                    block_table=block_table_gpu[i:i+1],
+                    fa_version=self.vllm_flash_attn_version,
+                )
+                continue
 
-            # SpargeAttention expects [B, H, N, D] and does not handle GQA.
-            # GQA expand only (no gather) — ~0.4ms vs ~3.6ms per layer.
-            # [N, Hkv, D] → [1, H, N, D]
-            q_b = q_seq.permute(1, 0, 2).unsqueeze(0).contiguous()
-            k_b = k_seq.permute(1, 0, 2).unsqueeze(0).contiguous()
-            v_b = v_seq.permute(1, 0, 2).unsqueeze(0).contiguous()
-
-            if self.num_kv_heads != self.num_heads:
-                repeat = self.num_heads // self.num_kv_heads
-                k_b = k_b.repeat_interleave(repeat, dim=1)
-                v_b = v_b.repeat_interleave(repeat, dim=1)
-
-            out_b = self._sparge_fn(
-                q_b, k_b, v_b,
-                is_causal=True,
-                scale=self.scale,
+            # Compute block-level sparse mask from dense K (already available)
+            sparse_mask = self.compute_sparse_mask(
+                q_seq, k_seq,
                 topk=self.topk,
-                output_dtype=query.dtype,
-            )  # [1, H, N, D]
+                page_size=page_size,
+            )  # [num_pages] bool
 
-            # [1, H, N, D] → [N, H, D]
-            output[q_start:q_end] = out_b[0].permute(1, 0, 2)
+            # Launch paged sparse kernel — reads k_cache/v_cache directly,
+            # native GQA (no repeat_interleave), skips masked pages entirely.
+            out_seq = self._paged_sparse_attn_single(
+                q_seq=q_seq,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                block_table_row=block_table_gpu[i],
+                seq_len=kv_len,
+                sparse_mask=sparse_mask,
+            )  # [N, H_q, D]
+
+            output[q_start:q_end] = out_seq
+
+            # Debug: compare against dense FlashAttention on first call
+            if self._debug and self._debug_first_call:
+                self._debug_first_call = False
+                cu_q = torch.tensor([0, q_end - q_start],
+                                     dtype=torch.int32, device=query.device)
+                ref = flash_attn_varlen_func(
+                    q=q_seq,
+                    k=key_cache,
+                    v=value_cache,
+                    cu_seqlens_q=cu_q,
+                    max_seqlen_q=kv_len,
+                    seqused_k=torch.tensor([kv_len], dtype=torch.int32,
+                                           device=query.device),
+                    max_seqlen_k=kv_len,
+                    softmax_scale=self.scale,
+                    causal=True,
+                    block_table=block_table_gpu[i:i+1],
+                    fa_version=self.vllm_flash_attn_version,
+                )
+                diff = (out_seq - ref).abs().max().item()
+                logger.debug(
+                    "[SPARGE_DEBUG] paged_sparse_attn max diff vs flash: %.6f "
+                    "(topk=%.2f, seq_len=%d, num_pages=%d, pages_kept=%d)",
+                    diff, self.topk, kv_len, sparse_mask.shape[0],
+                    sparse_mask.sum().item(),
+                )
 
     # ------------------------------------------------------------------
     # Decode: fall back to FlashAttention (dense, paged)
