@@ -126,6 +126,7 @@ void set_params_fprop(Flash_fwd_params &params,
     params.is_seqlens_k_cumulative = true;
 }
 
+#ifndef BUILD_FWD_ONLY
 void set_params_dgrad(Flash_bwd_params &params,
                       // sizes
                       const size_t b,
@@ -202,6 +203,7 @@ void set_params_dgrad(Flash_bwd_params &params,
 
     params.deterministic = deterministic;
 }
+#endif  // BUILD_FWD_ONLY
 
 void run_mha_fwd_block(Flash_fwd_params &params, cudaStream_t stream, bool force_split_kernel=false) {
     FP16_SWITCH(!params.is_bf16, [&] {
@@ -426,6 +428,7 @@ mha_varlen_fwd_block(at::Tensor &q,  // total_q x num_heads x head_size, total_q
     return {out, softmax_lse, p, rng_state};
 }
 
+#ifndef BUILD_FWD_ONLY
 void run_mha_bwd_block(Flash_bwd_params &params, cudaStream_t stream) {
     FP16_SWITCH(!params.is_bf16, [&] {
         HEADDIM_SWITCH(params.d, [&] {
@@ -715,10 +718,13 @@ mha_varlen_bwd_block(const at::Tensor &dout,  // total_q x num_heads, x head_siz
 
     return { dq, dk, dv, softmax_d };
 }
+#endif  // BUILD_FWD_ONLY
 } // namespace FLASH_NAMESPACE
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.doc() = "BlockSparseAttention";
     m.def("fwd_block", &FLASH_NAMESPACE::mha_varlen_fwd_block, "Forward pass, with blockmask");
+#ifndef BUILD_FWD_ONLY
     m.def("bwd_block", &FLASH_NAMESPACE::mha_varlen_bwd_block, "Backward pass, with blockmask");
+#endif  // BUILD_FWD_ONLY
 }

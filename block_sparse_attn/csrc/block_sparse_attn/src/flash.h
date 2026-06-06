@@ -144,6 +144,7 @@ struct Flash_fwd_params : public Qkv_params {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#ifndef BUILD_FWD_ONLY
 struct Flash_bwd_params : public Flash_fwd_params {
 
     // The dO and dQKV matrices.
@@ -183,11 +184,14 @@ struct Flash_bwd_params : public Flash_fwd_params {
     bool deterministic;
     index_t dq_accum_split_stride;
 };
+#endif  // BUILD_FWD_ONLY
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 template<typename T, int Headdim, bool Is_causal> void run_mha_fwd_block_(Flash_fwd_params &params, cudaStream_t stream);
+#ifndef BUILD_FWD_ONLY
 template<typename T, int Headdim, bool Is_causal> void run_mha_bwd_block_(Flash_bwd_params &params, cudaStream_t stream);
+#endif  // BUILD_FWD_ONLY
 
 }  // namespace FLASH_NAMESPACE

@@ -157,8 +157,13 @@ ext_modules = []
 
 # We want this even if SKIP_CUDA_BUILD because when we run python setup.py sdist we want the .hpp
 # files included in the source distribution, in case the user compiles from source.
-# Run git submodule update relative to this directory (csrc/cutlass lives inside this subfolder)
-subprocess.run(["git", "submodule", "update", "--init", "csrc/cutlass"], cwd=this_dir)
+# csrc/cutlass is a symlink to the pre-existing cutlass source; no submodule init needed.
+cutlass_include = Path(this_dir) / "csrc" / "cutlass" / "include"
+if not cutlass_include.exists():
+    raise RuntimeError(
+        f"cutlass headers not found at {cutlass_include}. "
+        "Please run: rmdir csrc/cutlass && ln -s /workspace/vllm/.deps/vllm-flash-attn-src/csrc/cutlass csrc/cutlass"
+    )
 
 if not SKIP_CUDA_BUILD:
     print("\n\ntorch.__version__  = {}\n\n".format(torch.__version__))
@@ -232,23 +237,13 @@ if not SKIP_CUDA_BUILD:
                 "csrc/block_sparse_attn/src/flash_fwd_block_hdim128_fp16_causal_sm80.cu",
                 "csrc/block_sparse_attn/src/flash_fwd_block_hdim128_bf16_sm80.cu",
                 "csrc/block_sparse_attn/src/flash_fwd_block_hdim128_bf16_causal_sm80.cu",
-                
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim32_fp16_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim32_fp16_causal_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim32_bf16_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim32_bf16_causal_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim64_fp16_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim64_fp16_causal_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim64_bf16_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim64_bf16_causal_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim128_fp16_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim128_fp16_causal_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim128_bf16_sm80.cu",
-                "csrc/block_sparse_attn/src/flash_bwd_block_hdim128_bf16_causal_sm80.cu",
+                # Backward pass excluded: not needed for inference, and requires CUTLASS 3.4 API
+                # (flash_bwd_kernel.h uses TiledShape_MNK / make_tiled_copy_B_warpcontiguousN
+                #  which are incompatible with the available CUTLASS 3.8)
             ],
             extra_compile_args={
-                "cxx": compiler_c17_flag,
-                "nvcc": append_nvcc_threads(nvcc_flags + cc_flag),
+                "cxx": compiler_c17_flag + ["-DBUILD_FWD_ONLY"],
+                "nvcc": append_nvcc_threads(nvcc_flags + cc_flag + ["-DBUILD_FWD_ONLY"]),
             },
             include_dirs=[
                 Path(this_dir) / "csrc" / "block_sparse_attn",
