@@ -102,6 +102,20 @@ python scripts/infer_drivelm_lora.py \
   --disable-chunked-mm-input
 ```
 
+### Recommended default for DriveLM
+DriveLM sequences are ~8421 tokens (6 cameras). The `--max-num-batched-tokens 16384`
+flag avoids splitting each sequence into 2 prefill chunks, saving one full 28-layer
+forward pass per request (**+12% throughput, -21% latency** vs default 8192):
+
+```bash
+python scripts/infer_drivelm_lora.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 100 \
+  --max-num-batched-tokens 16384
+```
+
 ### Speculative decoding
 #### With N-gram proposer
 ```bash

@@ -368,11 +368,9 @@ class MultiModalProcessorOnlyCache(BaseMultiModalProcessorCache):
     """
     The cache which is used on P0 when IPC caching is disabled.
 
-    How to update each item:
-
-    - If the item is in the cache, replace the input with the cached item.
-    - If the item is not in the cache, store that item (which includes
-      tensor data and metadata) into the cache, and return the input.
+    Supports optional disk persistence via VLLM_PERSIST_MM_CACHE_DIR.
+    When set, cache entries survive across Python processes — subsequent runs
+    on the same images skip HF preprocessing entirely.
     """
 
     def __init__(self, model_config: "ModelConfig") -> None:
@@ -385,9 +383,67 @@ class MultiModalProcessorOnlyCache(BaseMultiModalProcessorCache):
             MultiModalProcessorCacheItem,
         )
 
+        # Optional disk persistence — activated by env var
+        import os as _os, json as _json, pickle as _pickle
+        self._persist_dir: str = _os.environ.get("VLLM_PERSIST_MM_CACHE_DIR", "")
+        self._disk_index: dict[str, str] = {}
+        if self._persist_dir:
+            _os.makedirs(self._persist_dir, exist_ok=True)
+            _idx = _os.path.join(self._persist_dir, "index.json")
+            if _os.path.exists(_idx):
+                try:
+                    with open(_idx) as f:
+                        self._disk_index = _json.load(f)
+                    logger.info(
+                        "Persistent MM cache: %d entries from %s",
+                        len(self._disk_index), self._persist_dir,
+                    )
+                except Exception as e:
+                    logger.warning("Could not load persistent MM cache: %s", e)
+        self._json = _json
+        self._pickle = _pickle
+        self._disk_hits = 0
+        self._disk_misses = 0
+
+    def _pkl_path(self, mm_hash: str) -> str:
+        import os; return os.path.join(self._persist_dir, f"{mm_hash[:16]}.pkl")
+
+    def _save_disk_index(self) -> None:
+        import os
+        try:
+            with open(os.path.join(self._persist_dir, "index.json"), "w") as f:
+                self._json.dump(self._disk_index, f)
+        except Exception as e:
+            logger.warning("Could not save MM cache index: %s", e)
+
+    def _load_from_disk(self, mm_hash: str) -> "MultiModalProcessorCacheItem | None":
+        if mm_hash not in self._disk_index:
+            return None
+        import os
+        pkl = self._pkl_path(mm_hash)
+        if not os.path.exists(pkl):
+            return None
+        try:
+            with open(pkl, "rb") as f:
+                return self._pickle.load(f)
+        except Exception as e:
+            logger.warning("Could not load MM cache entry: %s", e)
+            return None
+
+    def _save_to_disk(self, mm_hash: str, item: "MultiModalProcessorCacheItem") -> None:
+        try:
+            with open(self._pkl_path(mm_hash), "wb") as f:
+                self._pickle.dump(item, f, protocol=self._pickle.HIGHEST_PROTOCOL)
+            self._disk_index[mm_hash] = f"{mm_hash[:16]}.pkl"
+            self._save_disk_index()
+        except Exception as e:
+            logger.warning("Could not save MM cache entry: %s", e)
+
     @override
     def is_cached_item(self, mm_hash: str) -> bool:
-        return mm_hash in self._cache
+        return mm_hash in self._cache or (
+            bool(self._persist_dir) and mm_hash in self._disk_index
+        )
 
     @override
     def get_and_update_item(
@@ -396,17 +452,33 @@ class MultiModalProcessorOnlyCache(BaseMultiModalProcessorCache):
         mm_hash: str,
     ) -> MultiModalProcessorCacheOutItem:
         global _audit_hits, _audit_misses, _audit_hit_sizes  # [AUDIT]
+
+        # 1. In-memory LRU (fastest)
         if (cached_item := self._cache.get(mm_hash)) is not None:
             _audit_hits += 1  # [AUDIT]
-            _audit_hit_sizes.append(  # [AUDIT]
-                MultiModalCache.get_item_size(cached_item)
-            )
+            _audit_hit_sizes.append(MultiModalCache.get_item_size(cached_item))
             return cached_item.item, cached_item.prompt_updates
+
+        # 2. Disk cache (survives across processes/runs)
+        if self._persist_dir:
+            disk_item = self._load_from_disk(mm_hash)
+            if disk_item is not None:
+                self._cache[mm_hash] = disk_item  # warm in-memory LRU
+                _audit_hits += 1  # [AUDIT]
+                _audit_hit_sizes.append(MultiModalCache.get_item_size(disk_item))
+                self._disk_hits += 1
+                return disk_item.item, disk_item.prompt_updates
+            self._disk_misses += 1
 
         _audit_misses += 1  # [AUDIT]
         assert mm_item is not None, f"Expected a cached item for {mm_hash=}"
 
-        self._cache[mm_hash] = MultiModalProcessorCacheItem(*mm_item)
+        new_item = MultiModalProcessorCacheItem(*mm_item)
+        self._cache[mm_hash] = new_item
+
+        # Persist to disk for future runs
+        if self._persist_dir:
+            self._save_to_disk(mm_hash, new_item)
 
         return mm_item
 
@@ -421,6 +493,195 @@ class MultiModalProcessorOnlyCache(BaseMultiModalProcessorCache):
     @override
     def make_stats(self, *, delta: bool = False) -> CacheInfo:
         return self._cache.stat(delta=delta)
+
+
+# ── Audit helpers (no-op when not called) ─────────────────────────────────────
+
+def print_cache_stats() -> None:
+    """Print MM preprocessor cache hit/miss statistics."""
+    total = _audit_hits + _audit_misses
+    if total == 0:
+        print("MM Cache: No lookups recorded.")
+        return
+    print(f"MM Cache hit rate   : {_audit_hits/total*100:.1f}%")
+    print(f"  Cache hits        : {_audit_hits}")
+    print(f"  Cache misses      : {_audit_misses}")
+    print(f"  Total lookups     : {total}")
+    if _audit_hit_sizes:
+        import statistics as _stats
+        print(f"  Avg bytes/hit     : {_stats.mean(_audit_hit_sizes)/1024**2:.1f} MB")
+        print(f"  Total saved (est) : {sum(_audit_hit_sizes)/1024**3:.2f} GB")
+
+
+def print_cache_memory(lru_cache: "LRUCache | None" = None) -> None:
+    """Print MM preprocessor cache memory usage."""
+    if lru_cache is None:
+        print("MM Cache memory     : (no cache object provided)")
+        return
+    try:
+        n = len(lru_cache)
+        used_bytes = int(lru_cache.currsize)
+        cap_bytes = int(lru_cache.capacity)
+        print(f"MM Cache entries    : {n}")
+        print(f"MM Cache usage      : {used_bytes/1024**3:.3f} GB / "
+              f"{cap_bytes/1024**3:.1f} GB ({used_bytes/max(cap_bytes,1)*100:.1f}% full)")
+        if n > 0:
+            avg_bytes = used_bytes / n
+            print(f"  Avg entry size    : {avg_bytes/1024**2:.1f} MB")
+    except Exception as e:
+        print(f"MM Cache memory     : (error: {e})")
+
+
+# ── Persistent disk-backed cache ──────────────────────────────────────────────
+
+class PersistentMultiModalProcessorCache(MultiModalProcessorOnlyCache):
+    """
+    Extends MultiModalProcessorOnlyCache with disk persistence.
+
+    On a cache miss, the entry is written both to the in-memory LRU and to
+    ``cache_dir/{hash[:16]}.pkl``.  On subsequent Python processes the disk
+    entry is loaded before calling the HF processor, so the ViT is never
+    re-run for previously seen images.
+
+    Cache layout::
+
+        cache_dir/
+            index.json          # {full_hash: filename} mapping
+            {hash[:16]}.pkl     # pickled MultiModalProcessorCacheItem
+
+    The disk cache is never automatically evicted; delete the directory to
+    reset.  Control via ``VLLM_PERSIST_MM_CACHE_DIR`` env var or the
+    ``cache_dir`` constructor argument.
+    """
+
+    def __init__(
+        self,
+        model_config: "ModelConfig",
+        cache_dir: str | None = None,
+    ) -> None:
+        super().__init__(model_config)
+
+        import json as _json
+        import os as _os
+        import pickle as _pickle
+
+        self._json = _json
+        self._os = _os
+        self._pickle = _pickle
+
+        self._cache_dir = cache_dir or _os.environ.get(
+            "VLLM_PERSIST_MM_CACHE_DIR", ""
+        )
+        if not self._cache_dir:
+            raise ValueError(
+                "PersistentMultiModalProcessorCache requires a cache directory. "
+                "Set VLLM_PERSIST_MM_CACHE_DIR or pass cache_dir explicitly."
+            )
+        _os.makedirs(self._cache_dir, exist_ok=True)
+
+        self._index_path = _os.path.join(self._cache_dir, "index.json")
+        self._disk_index: dict[str, str] = {}
+        if _os.path.exists(self._index_path):
+            try:
+                with open(self._index_path, "r") as f:
+                    self._disk_index = _json.load(f)
+                logger.info(
+                    "Persistent MM cache: loaded %d entries from %s",
+                    len(self._disk_index), self._cache_dir,
+                )
+            except Exception as e:
+                logger.warning("Could not load persistent MM cache index: %s", e)
+
+        self._disk_hits = 0
+        self._disk_misses = 0
+
+    def _pkl_path(self, mm_hash: str) -> str:
+        return self._os.path.join(self._cache_dir, f"{mm_hash[:16]}.pkl")
+
+    def _save_index(self) -> None:
+        try:
+            with open(self._index_path, "w") as f:
+                self._json.dump(self._disk_index, f)
+        except Exception as e:
+            logger.warning("Could not save persistent MM cache index: %s", e)
+
+    def _load_from_disk(self, mm_hash: str) -> "MultiModalProcessorCacheItem | None":
+        if mm_hash not in self._disk_index:
+            return None
+        pkl_path = self._pkl_path(mm_hash)
+        if not self._os.path.exists(pkl_path):
+            return None
+        try:
+            with open(pkl_path, "rb") as f:
+                return self._pickle.load(f)
+        except Exception as e:
+            logger.warning("Could not load MM cache entry %s: %s", mm_hash[:16], e)
+            return None
+
+    def _save_to_disk(self, mm_hash: str, item: "MultiModalProcessorCacheItem") -> None:
+        try:
+            with open(self._pkl_path(mm_hash), "wb") as f:
+                self._pickle.dump(item, f, protocol=self._pickle.HIGHEST_PROTOCOL)
+            self._disk_index[mm_hash] = f"{mm_hash[:16]}.pkl"
+            self._save_index()
+        except Exception as e:
+            logger.warning("Could not save MM cache entry %s: %s", mm_hash[:16], e)
+
+    @override
+    def get_and_update_item(
+        self,
+        mm_item: "MultiModalProcessorCacheInItem",
+        mm_hash: str,
+    ) -> "MultiModalProcessorCacheOutItem":
+        global _audit_hits, _audit_misses, _audit_hit_sizes
+
+        # 1. In-memory LRU (fastest)
+        if (cached := self._cache.get(mm_hash)) is not None:
+            _audit_hits += 1
+            _audit_hit_sizes.append(MultiModalCache.get_item_size(cached))
+            self._disk_hits += 1
+            return cached.item, cached.prompt_updates
+
+        # 2. Disk cache (survives between runs)
+        disk_item = self._load_from_disk(mm_hash)
+        if disk_item is not None:
+            self._cache[mm_hash] = disk_item   # warm in-memory LRU
+            _audit_hits += 1
+            _audit_hit_sizes.append(MultiModalCache.get_item_size(disk_item))
+            self._disk_hits += 1
+            return disk_item.item, disk_item.prompt_updates
+
+        # 3. Miss — run HF processor, then persist
+        _audit_misses += 1
+        self._disk_misses += 1
+        assert mm_item is not None, f"Expected a cached item for {mm_hash=}"
+
+        new_item = MultiModalProcessorCacheItem(*mm_item)
+        self._cache[mm_hash] = new_item
+        self._save_to_disk(mm_hash, new_item)
+        return mm_item
+
+    def print_disk_stats(self) -> None:
+        total = self._disk_hits + self._disk_misses
+        disk_entries = len(self._disk_index)
+        print(f"Persistent MM cache :")
+        print(f"  Cache dir         : {self._cache_dir}")
+        print(f"  Disk entries      : {disk_entries}")
+        if total > 0:
+            print(f"  Hit rate (this run): {self._disk_hits/total*100:.1f}%  "
+                  f"({self._disk_hits} hits / {self._disk_misses} misses)")
+        try:
+            import os as _os
+            total_bytes = sum(
+                _os.path.getsize(_os.path.join(self._cache_dir, f))
+                for f in _os.listdir(self._cache_dir)
+                if f.endswith(".pkl")
+            )
+            print(f"  Disk usage        : {total_bytes/1024**3:.3f} GB")
+            if disk_entries > 0:
+                print(f"  Avg entry size    : {total_bytes/disk_entries/1024**2:.1f} MB")
+        except Exception:
+            pass
 
 
 class MultiModalProcessorSenderCache(BaseMultiModalProcessorCache):
