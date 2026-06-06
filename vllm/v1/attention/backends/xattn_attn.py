@@ -219,8 +219,15 @@ class XAttentionImpl(AttentionImpl):
         value_cache: torch.Tensor,
         block_table_row: torch.Tensor,  # [max_blocks] GPU tensor
         kv_len: int,
+        expand_gqa: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Gather paged KV into dense [1, H, N, D] tensors for XAttention."""
+        """Gather paged KV into dense [1, H, N, D] tensors.
+
+        When expand_gqa=True the KV heads are repeated to match Q heads
+        (required by block_sparse_attn / XAttention which do not handle GQA).
+        When expand_gqa=False the original num_kv_heads count is preserved
+        (FlashAttention handles GQA internally).
+        """
         block_size = key_cache.shape[1]
         num_blocks_needed = math.ceil(kv_len / block_size)
         block_ids = block_table_row[:num_blocks_needed]
@@ -233,8 +240,8 @@ class XAttentionImpl(AttentionImpl):
         k_seq = k_flat[:kv_len].contiguous()
         v_seq = v_flat[:kv_len].contiguous()
 
-        # GQA expansion: repeat KV heads to match Q head count
-        if self.num_kv_heads != self.num_heads:
+        # GQA expansion only for kernels that don't handle GQA natively
+        if expand_gqa and self.num_kv_heads != self.num_heads:
             repeat = self.num_heads // self.num_kv_heads
             k_seq = k_seq.repeat_interleave(repeat, dim=1)
             v_seq = v_seq.repeat_interleave(repeat, dim=1)
@@ -269,11 +276,13 @@ class XAttentionImpl(AttentionImpl):
             q_seq = query[q_start:q_end].contiguous()  # [q_len, H, D]
 
             # Short sequences: fall back to dense FlashAttention
+            # flash_attn handles GQA natively, so do NOT expand KV heads
             if q_len < _XATTN_MIN_PREFILL_LEN:
                 k_b, v_b = self._gather_kv_dense(
-                    key_cache, value_cache, block_table_gpu[i], kv_len
+                    key_cache, value_cache, block_table_gpu[i], kv_len,
+                    expand_gqa=False,
                 )
-                # [1, H, N, D] → [N, H, D]
+                # [1, Hkv, N, D] → [N, Hkv, D]
                 k_seq = k_b[0].permute(1, 0, 2)
                 v_seq = v_b[0].permute(1, 0, 2)
                 cu_seqlens_q = torch.tensor(
@@ -325,8 +334,13 @@ class XAttentionImpl(AttentionImpl):
                     "kv_len=%d): %s. Falling back to FlashAttention.",
                     i, q_len, kv_len, exc,
                 )
-                k_seq = k_b[0].permute(1, 0, 2)
-                v_seq = v_b[0].permute(1, 0, 2)
+                # Re-gather without GQA expansion for FlashAttention
+                k_b2, v_b2 = self._gather_kv_dense(
+                    key_cache, value_cache, block_table_gpu[i], kv_len,
+                    expand_gqa=False,
+                )
+                k_seq = k_b2[0].permute(1, 0, 2)
+                v_seq = v_b2[0].permute(1, 0, 2)
                 cu_seqlens_q = torch.tensor(
                     [0, q_len], dtype=torch.int32, device=query.device
                 )
