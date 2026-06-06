@@ -256,3 +256,4 @@ datasets
 inst_sm80_*.cu
 inst_sm89_*.cu
 inst_sm90_*.cu
+block_sparse_attn/csrc/cutlass
