@@ -379,6 +379,9 @@ def main():
 
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    # vLLM forks EngineCore by default; CUDA-linked extensions loaded in the main
+    # process conflict with fork. Spawn avoids re-initialising CUDA in the child.
+    os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
 
     from transformers import AutoProcessor
     from vllm import LLM, SamplingParams
