@@ -226,34 +226,57 @@ class SpargeAttentionImpl(AttentionImpl):
         SpargeAttention expects dense (batched) tensors, so we need to
         expand the paged KV cache into a dense representation first for
         each sequence in the batch.
+
+        Only applies sparse attention when ALL sequences in the batch are
+        full first-prefills (q_len == kv_len, q_len >= 128). Any mixed
+        batch (chunked prefill, decode-in-prefill-batch) uses paged
+        FlashAttention for the whole batch to avoid unsafe KV gather.
         """
-        # Move only loop-control tensors to CPU. Keep block_table on GPU so
-        # that KV cache indexing uses proper CUDA semantics and avoids
-        # illegal memory access errors that occur when indexing a CUDA tensor
-        # with a Python list.
         query_start_loc = attn_metadata.query_start_loc.cpu().tolist()
         seq_lens = attn_metadata.seq_lens.cpu().tolist()
-        block_table_gpu = attn_metadata.block_table  # stays on GPU
+        block_table_gpu = attn_metadata.block_table
         num_reqs = len(query_start_loc) - 1
 
+        # Check if every sequence is a full first-prefill eligible for SpargeAttn.
+        all_sparge_eligible = all(
+            (query_start_loc[i + 1] - query_start_loc[i]) == int(seq_lens[i])
+            and (query_start_loc[i + 1] - query_start_loc[i]) >= 128
+            for i in range(num_reqs)
+        )
+
+        if not all_sparge_eligible:
+            # Mixed batch or chunked prefill — use paged FlashAttention.
+            flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                out=output,
+                cu_seqlens_q=attn_metadata.query_start_loc,
+                max_seqlen_q=attn_metadata.max_query_len,
+                seqused_k=attn_metadata.seq_lens,
+                max_seqlen_k=attn_metadata.max_seq_len,
+                softmax_scale=self.scale,
+                causal=attn_metadata.causal,
+                alibi_slopes=None,
+                window_size=None,
+                block_table=block_table_gpu,
+                softcap=self.logits_soft_cap,
+                scheduler_metadata=attn_metadata.scheduler_metadata,
+                fa_version=self.vllm_flash_attn_version,
+            )
+            return
+
+        # All sequences are full first-prefills — run SpargeAttention per sequence.
         for i in range(num_reqs):
             q_start = query_start_loc[i]
             q_end = query_start_loc[i + 1]
             q_len = q_end - q_start
             kv_len = int(seq_lens[i])
 
-            if q_len == 0:
-                continue
-
-            # Gather KV pages for this sequence.
-            # Use index_select (safer than fancy indexing on non-contiguous
-            # kv_cache views from unbind) and force contiguous output for
-            # Triton kernel compatibility.
             block_size = key_cache.shape[1]
             num_blocks_needed = math.ceil(kv_len / block_size)
-            block_ids = block_table_gpu[i, :num_blocks_needed]  # 1D GPU tensor
+            block_ids = block_table_gpu[i, :num_blocks_needed]
 
-            # index_select produces a contiguous output on non-contiguous inputs.
             k_blocks = torch.index_select(key_cache, 0, block_ids)
             v_blocks = torch.index_select(value_cache, 0, block_ids)
             k_flat = k_blocks.reshape(-1, self.num_kv_heads, self.head_size)
@@ -261,44 +284,15 @@ class SpargeAttentionImpl(AttentionImpl):
             k_seq = k_flat[:kv_len].contiguous()
             v_seq = v_flat[:kv_len].contiguous()
 
-            # q_seq: [q_len, H, D] — force contiguous for Triton kernels
             q_seq = query[q_start:q_end].contiguous()
 
-            # SpargeAttention requires at least 128 query tokens.
-            # For shorter sequences fall back to FlashAttention exactly
-            # like the decode path does, but scoped to this one sequence.
-            if q_len < 128:
-                cu_seqlens_q = torch.tensor(
-                    [0, q_len], dtype=torch.int32, device=query.device
-                )
-                seqused_k = torch.tensor(
-                    [kv_len], dtype=torch.int32, device=query.device
-                )
-                flash_attn_varlen_func(
-                    q=q_seq,
-                    k=k_flat,
-                    v=v_flat,
-                    out=output[q_start:q_end],
-                    cu_seqlens_q=cu_seqlens_q,
-                    max_seqlen_q=q_len,
-                    seqused_k=seqused_k,
-                    max_seqlen_k=kv_len,
-                    softmax_scale=self.scale,
-                    causal=True,
-                    fa_version=self.vllm_flash_attn_version,
-                )
-                continue
-
-            # SpargeAttention expects 4D tensors in [B, H, N, D] layout
-            # (tensor_layout="HND" default, i.e. [Batch, Heads, Seq, Dim]).
-            # It does NOT handle GQA internally — Q and K must have equal
-            # head counts for the block similarity matmul to work.
+            # SpargeAttention expects 4D tensors in [B, H, N, D] layout.
+            # It does NOT handle GQA — expand KV heads to match Q heads.
             # [N, H, D] → [1, H, N, D]
             q_b = q_seq.permute(1, 0, 2).unsqueeze(0).contiguous()
             k_b = k_seq.permute(1, 0, 2).unsqueeze(0).contiguous()
             v_b = v_seq.permute(1, 0, 2).unsqueeze(0).contiguous()
 
-            # GQA: expand KV heads to match Q heads on dim=1 of [1, H, N, D].
             if self.num_kv_heads != self.num_heads:
                 repeat = self.num_heads // self.num_kv_heads
                 k_b = k_b.repeat_interleave(repeat, dim=1)
