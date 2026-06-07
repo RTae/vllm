@@ -68,7 +68,7 @@ uv pip install -e . --torch-backend=auto
 uv pip install datasets transformers peft pytest
 MAX_JOBS=4 uv pip install flash-attn --no-build-isolation
 MAX_JOBS=4 uv pip install minference --no-build-isolation
-MAX_JOBS=4 uv pip install --no-deps llmcompressor==0.10.0.2
+MAX_JOBS=4 uv pip install --no-deps llmcompressor==0.11.0
 MAX_JOBS=4 uv pip install --python .venv/bin/python --no-build-isolation -e ./block_sparse_attn -v
 MAX_JOBS=4 uv pip install --python .venv/bin/python --no-build-isolation -e ./spas_sage_attn -v\
 ```
@@ -90,6 +90,16 @@ python scripts/create_drivelm_nuscenes.py
 
 
 ## Quantization (AWQ INT4)
+
+### Install llmcompressor
+
+Already included in the installation step above:
+```bash
+MAX_JOBS=4 uv pip install --no-deps llmcompressor==0.10.0.2
+```
+
+> The quantization script automatically patches compatibility issues with
+> `transformers >= 5.0` and `compressed_tensors >= 0.9`. No manual fixes needed.
 
 ### Run AWQ INT4 quantization
 

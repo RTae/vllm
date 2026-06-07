@@ -17,6 +17,65 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
+# ── Compatibility patches for llmcompressor 0.10.x + transformers >= 5.0 ──────
+# These patch llmcompressor's installed files in-process before any import,
+# so the script works without manual sed/stub commands.
+
+def _patch_llmcompressor_compat() -> None:
+    """Apply three patches required when transformers >= 5.0 is installed."""
+    import importlib, importlib.util, os, types
+
+    # ── Patch 1: TORCH_INIT_FUNCTIONS removed in transformers 5.x ────────────
+    # llmcompressor/utils/dev.py tries to import it; rebuild from torch.nn.init.
+    try:
+        import transformers.modeling_utils as _tmu
+        if not hasattr(_tmu, "TORCH_INIT_FUNCTIONS"):
+            _tmu.TORCH_INIT_FUNCTIONS = {
+                name: fn
+                for name, fn in vars(torch.nn.init).items()
+                if callable(fn) and not name.startswith("_") and inspect.isfunction(fn)
+            }
+    except Exception:
+        pass
+
+    # ── Patch 2: compressed_tensors.utils.match._match_name → match_name ─────
+    try:
+        import compressed_tensors.utils.match as _ctm
+        if not hasattr(_ctm, "_match_name") and hasattr(_ctm, "match_name"):
+            _ctm._match_name = _ctm.match_name
+    except Exception:
+        pass
+
+    # ── Patch 3: compressed_tensors.config.format module missing ─────────────
+    # Create an in-memory stub so the import resolves without touching disk.
+    try:
+        import compressed_tensors.config as _ctc
+        _mod_name = "compressed_tensors.config.format"
+        if importlib.util.find_spec(_mod_name) is None:
+            from compressed_tensors.config import CompressionFormat
+
+            _stub = types.ModuleType(_mod_name)
+
+            def _get_quant_compression_format(input_activations, weights):
+                if weights is None:
+                    return CompressionFormat.dense
+                num_bits = getattr(weights, "num_bits", 16)
+                return (
+                    CompressionFormat.pack_quantized
+                    if num_bits <= 4
+                    else CompressionFormat.int_quantized
+                )
+
+            _stub._get_quant_compression_format = _get_quant_compression_format
+            sys.modules[_mod_name] = _stub
+    except Exception:
+        pass
+
+
+_patch_llmcompressor_compat()
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 TORCH_DTYPES = {
     "auto": "auto",
     "float16": torch.float16,
