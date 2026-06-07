@@ -90,17 +90,6 @@ python scripts/create_drivelm_nuscenes.py
 
 
 ## Quantization (AWQ INT4)
-
-### Install llmcompressor
-
-Already included in the installation step above:
-```bash
-MAX_JOBS=4 uv pip install --no-deps llmcompressor==0.10.0.2
-```
-
-> The quantization script automatically patches compatibility issues with
-> `transformers >= 5.0` and `compressed_tensors >= 0.9`. No manual fixes needed.
-
 ### Run AWQ INT4 quantization
 
 ```bash
