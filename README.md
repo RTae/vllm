@@ -70,7 +70,7 @@ MAX_JOBS=4 uv pip install flash-attn --no-build-isolation
 MAX_JOBS=4 uv pip install minference --no-build-isolation
 MAX_JOBS=4 uv pip install --no-deps llmcompressor==0.10.0.2
 MAX_JOBS=4 uv pip install --python .venv/bin/python --no-build-isolation -e ./block_sparse_attn -v
-MAX_JOBS=4 uv pip install --python .venv/bin/python --no-build-isolation -e ./spas_sage_attn -v
+MAX_JOBS=4 uv pip install --python .venv/bin/python --no-build-isolation -e ./spas_sage_attn -v\
 ```
 
 ## Download Models and Datasets
