@@ -221,58 +221,35 @@ else
 fi
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 4: Apply all
-# EAGLE3 + FlashAttention + all caches + 16384 token budget
-# ════════════════════════════════════════════════════════════════════════════════
-print_section "APPLY ALL (Eagle3 + FlashAttention + all caches + 16384 budget)"
-
-if [[ -d "$EAGLE3_MODEL" ]]; then
-  # 4a. Original apply-all (without 16384 budget — for backward compat)
-  run_experiment "04a_all_eagle3_flash_all_caches" \
-    "${COMMON[@]}" \
-    --eagle3 "$EAGLE3_MODEL" \
-    --num-speculative-tokens "$NUM_SPEC_TOKENS"
-
-  # 4b. Apply-all + 16384 budget — the recommended best configuration
-  run_experiment "04b_all_eagle3_flash_all_caches_b16384" \
-    "${COMMON[@]}" \
-    --eagle3 "$EAGLE3_MODEL" \
-    --num-speculative-tokens "$NUM_SPEC_TOKENS" \
-    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
-else
-  echo "  ⚠  SKIP 04_all: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
-fi
-
-# ════════════════════════════════════════════════════════════════════════════════
-# Section 5: Chunked-prefill token budget
+# Section 4: Chunked-prefill token budget
 # DriveLM sequences are ~8421 tokens (6 cameras). Default max_num_batched_tokens=8192
 # splits each into 2 prefill chunks. Setting 16384 processes in 1 chunk, saving
 # one full 28-layer LLM forward pass (~465ms/request).
 # ════════════════════════════════════════════════════════════════════════════════
 print_section "CHUNKED PREFILL BUDGET (--max-num-batched-tokens)"
 
-# 5a. Default (vLLM heuristic, typically 8192)
-run_experiment "05a_batched_default" \
+# 4a. Default (vLLM heuristic, typically 8192)
+run_experiment "04a_batched_default" \
   "${COMMON[@]}" \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
   --disable-chunked-mm-input
 
-# 5b. 16384 — fits each DriveLM sequence in 1 prefill step
-run_experiment "05b_batched_16384" \
+# 4b. 16384 — fits each DriveLM sequence in 1 prefill step
+run_experiment "04b_batched_16384" \
   "${COMMON[@]}" \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
   --disable-chunked-mm-input \
   --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
 
-# 5c. 16384 + APC: best combined throughput setting
-run_experiment "05c_batched_16384_apc" \
+# 4c. 16384 + APC: best combined throughput setting
+run_experiment "04c_batched_16384_apc" \
   "${COMMON[@]}" \
   --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 6: Sequential scene inference
+# Section 5: Sequential scene inference
 # Submits one scene at a time (all questions per scene in one generate() call).
 # Guarantees 100% intra-scene APC hit rate — image KV blocks cannot be evicted
 # between questions from the same scene.
@@ -280,29 +257,27 @@ run_experiment "05c_batched_16384_apc" \
 # ════════════════════════════════════════════════════════════════════════════════
 print_section "SEQUENTIAL SCENE INFERENCE (--sequential-scenes)"
 
-# 6a. Default batch (all 100 at once) — reference for this section
-run_experiment "06a_batch_all" \
+# 5a. Default batch (all at once) — reference for this section
+run_experiment "05a_batch_all" \
   "${COMMON[@]}" \
   --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
 
-# 6b. Sequential scenes (one generate() per scene)
-run_experiment "06b_sequential_scenes" \
+# 5b. Sequential scenes (one generate() per scene)
+run_experiment "05b_sequential_scenes" \
   "${COMMON[@]}" \
   --max-num-batched-tokens "$MAX_BATCHED_TOKENS" \
   --sequential-scenes
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 7: Sparse attention + 16384 token budget
-# Compare sparse backends with the larger token budget for fair comparison.
+# Section 6: Sparse attention backends
+# Both require VLLM_WORKER_MULTIPROC_METHOD=spawn (set in infer script).
 # At ~8K tokens attention = 0.5% of prefill; gains expected at ≥32K tokens.
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "SPARSE ATTENTION + 16384 BUDGET (no caches)"
+print_section "SPARSE ATTENTION BACKENDS + 16384 BUDGET (no caches)"
 
-export VLLM_WORKER_MULTIPROC_METHOD=spawn
-
-# 7a. SPARGE_ATTN + 16384
+# 6a. SPARGE_ATTN (topk=0.5) — paged kernel, no gather, native GQA
 SPARGE_ATTN_TOPK=0.5 \
-run_experiment "07a_sparge_topk0.5_b16384" \
+run_experiment "06a_sparge_topk0.5_b16384" \
   "${COMMON[@]}" \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
@@ -310,9 +285,9 @@ run_experiment "07a_sparge_topk0.5_b16384" \
   --attention-backend SPARGE_ATTN \
   --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
 
-# 7b. XATTN + 16384
+# 6b. XATTN (topk=0.5, stride=8) — block-level importance scoring
 XATTN_THRESHOLD=0.5 XATTN_STRIDE=8 \
-run_experiment "07b_xattn_topk0.5_b16384" \
+run_experiment "06b_xattn_topk0.5_b16384" \
   "${COMMON[@]}" \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
@@ -320,7 +295,29 @@ run_experiment "07b_xattn_topk0.5_b16384" \
   --attention-backend XATTN \
   --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
 
-# ── Print summary ─────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 7: Apply ALL — best configuration
+# Eagle3 + FlashAttention + all caches + 16384 token budget
+# This is the recommended production setting.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "APPLY ALL — BEST CONFIG (Eagle3 + Flash + all caches + 16384)"
+
+if [[ -d "$EAGLE3_MODEL" ]]; then
+  # 7a. Original apply-all (without 16384 — backward compat with previous results)
+  run_experiment "07a_all_eagle3_flash_caches" \
+    "${COMMON[@]}" \
+    --eagle3 "$EAGLE3_MODEL" \
+    --num-speculative-tokens "$NUM_SPEC_TOKENS"
+
+  # 7b. Best: apply-all + 16384 budget — recommended default
+  run_experiment "07b_all_eagle3_flash_caches_b16384" \
+    "${COMMON[@]}" \
+    --eagle3 "$EAGLE3_MODEL" \
+    --num-speculative-tokens "$NUM_SPEC_TOKENS" \
+    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+else
+  echo "  ⚠  SKIP 07_all: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
+fi
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Ablation summary"
