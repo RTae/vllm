@@ -88,6 +88,45 @@ python scripts/create_drivelm_nuscenes.py
 ./scripts/download_models.sh
 ```
 
+
+## Quantization (AWQ INT4)
+
+### Run AWQ INT4 quantization
+
+```bash
+python scripts/quantize_qwen3vl_awq.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --data datasets/DriveLM_nuScenes/split/val \
+  --output-dir /workspace/.hf_home/qwen3-vl-8b-awq-int4/ \
+  --num-calibration-samples 256
+```
+
+Key arguments:
+
+| Argument | Default | Description |
+|---|---|---|
+| `--adapter-path` | `outputs/qwen3vl` | PEFT LoRA adapter directory |
+| `--base-model` | auto from adapter_config | Qwen3-VL base model path |
+| `--data` | DriveLM val split | Calibration dataset (load_from_disk) |
+| `--output-dir` | `outputs/qwen3vl_awq_int4` | Where to save the quantized model |
+| `--num-calibration-samples` | 256 | Number of samples for AWQ calibration |
+| `--max-seq-length` | 2048 | Max token length for calibration |
+| `--num-images` | 6 | Images per calibration sample |
+| `--scheme` | `W4A16_ASYM` | Quantization scheme (AWQ INT4 weight-only) |
+| `--ignore` | `lm_head`, `visual.*` | Layers kept in full precision |
+
+### Inference with quantized model
+
+```bash
+python scripts/infer_drivelm_lora.py \
+  --base-model /workspace/.hf_home/qwen3-vl-8b-awq-int4/ \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
+  --num-samples 100 \
+  --max-num-batched-tokens 16384
+```
+
 ## Inference
 
 ### Baseline
