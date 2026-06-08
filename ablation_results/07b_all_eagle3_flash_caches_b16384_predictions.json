@@ -1,7 +1,7 @@
 [
   {
     "id": "0ced08ea43754420a23b2fbec667a763_a0cfd83ec1bc47bdabd4afe3320b303f_0",
-    "answer": "There is a white truck to the front of the ego vehicle, a white truck to the front of the ego vehicle, and a black sedan to the front of the ego vehicle. The IDs of these objects are <c1,CAM_FRONT,140.35,118.42>, <c2,CAM_FRONT,161.21,118.42>, and <c3,CAM_FRONT,32.56,130.04>."
+    "answer": "There is a white truck to the front of the ego vehicle, a white truck to the front of the ego vehicle, and a black sedan to the front of the ego vehicle. The IDs of these objects are <c1,CAM_FRONT,140.59,118.42>, <c2,CAM_FRONT,161.21,118.42>, and <c3,CAM_FRONT,32.46,130.04>."
   },
   {
     "id": "0ced08ea43754420a23b2fbec667a763_a0cfd83ec1bc47bdabd4afe3320b303f_1",
@@ -25,7 +25,7 @@
   },
   {
     "id": "1c76efe7d0b048bc815c0445eeaa76ab_578e3abb222b4d0f9c8a4793417ae3d7_0",
-    "answer": "There is a white SUV to the front of the ego vehicle, a black SUV to the front right of the ego vehicle, a white pickup truck to the back of the ego vehicle, a black SUV to the front of the ego vehicle, and a green light to the front of the ego vehicle. The IDs of these objects are <c1,CAM_FRONT,41.96,130.04>, <c2,CAM_FRONT_RIGHT,164.26,133.35>, <c3,CAM_BACK,119.35,130.87>, <c4,CAM_FRONT,163.09,118.42>, and <c5,CAM_FRONT,122.79,50.47>."
+    "answer": "There is a black SUV to the front right of the ego vehicle, a white SUV to the back of the ego vehicle, a red SUV to the front of the ego vehicle, and a green light to the front of the ego vehicle. The IDs of these objects are <c1,CAM_FRONT_RIGHT,165.04,137.71>, <c2,CAM_BACK,119.35,130.87>, <c3,CAM_FRONT,41.99,130.67>, and <c4,CAM_FRONT,117.99,50.5>."
   },
   {
     "id": "1c76efe7d0b048bc815c0445eeaa76ab_578e3abb222b4d0f9c8a4793417ae3d7_1",

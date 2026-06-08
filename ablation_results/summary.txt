@@ -1,191 +1,470 @@
 
   ▶ BASELINE (Triton, all caches off)
-  ✓ 00_baseline  wall=1144s
-    throughput       : 1.0 samples/s
-    e2e latency p50  : 383.3915s
-    e2e latency p95  : 542.9512s
-    compute time mean: 198.2043s  (prefill+decode)
-    compute time p50 : 234.3753s
-    TTFT mean        : 372.2387s
-    prefill time mean: 181.5093s
-    prefill time p50 : 227.6832s
-    decode time mean : 16.695s
-    decode time p50  : 3.1346s
-    TPOT mean        : 0.5135s  (~ITL)
-    TPOT p50         : 0.544s
-    tokens/s mean    : 0.18
-    total gen tokens : 32724
+  ✓ 00_baseline  wall=199s
+    throughput       : 0.467 samples/s
+    e2e latency p50  : 7.3784s
+    e2e latency p95  : 22.6421s
+    compute time mean: 7.0718s  (prefill+decode)
+    compute time p50 : 6.2162s
+    TTFT mean        : 5.8156s
+    prefill time mean: 3.7181s
+    prefill time p50 : 3.5006s
+    decode time mean : 3.3537s
+    decode time p50  : 2.5808s
+    TPOT mean        : 0.4248s  (~ITL)
+    TPOT p50         : 0.2982s
+    tokens/s mean    : 3.48
+    total gen tokens : 328
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.4302  (accuracy+match+language combined)
 
   ▶ ATTENTION BACKENDS (all caches off)
-  ✓ 01_attn_flash  wall=1000s
-    throughput       : 1.168 samples/s
-    e2e latency p50  : 330.1463s
-    e2e latency p95  : 435.9364s
-    compute time mean: 159.7101s  (prefill+decode)
-    compute time p50 : 193.3585s
-    TTFT mean        : 314.7447s
-    prefill time mean: 145.4134s
-    prefill time p50 : 181.8813s
-    decode time mean : 14.2967s
-    decode time p50  : 2.9177s
-    TPOT mean        : 0.45s  (~ITL)
-    TPOT p50         : 0.4717s
-    tokens/s mean    : 0.23
-    total gen tokens : 32528
+  ✓ 01a_attn_flash  wall=126s
+    throughput       : 0.489 samples/s
+    e2e latency p50  : 6.8952s
+    e2e latency p95  : 21.1281s
+    compute time mean: 5.9018s  (prefill+decode)
+    compute time p50 : 5.176s
+    TTFT mean        : 4.9902s
+    prefill time mean: 2.9004s
+    prefill time p50 : 2.7535s
+    decode time mean : 3.0013s
+    decode time p50  : 2.4577s
+    TPOT mean        : 0.3779s  (~ITL)
+    TPOT p50         : 0.2339s
+    tokens/s mean    : 4.63
+    total gen tokens : 361
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.3986  (accuracy+match+language combined)
+  ✓ 01b_attn_flashinfer  wall=151s
+    throughput       : 0.484 samples/s
+    e2e latency p50  : 6.821s
+    e2e latency p95  : 21.2636s
+    compute time mean: 5.948s  (prefill+decode)
+    compute time p50 : 5.1019s
+    TTFT mean        : 4.9988s
+    prefill time mean: 2.976s
+    prefill time p50 : 2.8706s
+    decode time mean : 2.9719s
+    decode time p50  : 2.4188s
+    TPOT mean        : 0.385s  (~ITL)
+    TPOT p50         : 0.2913s
+    tokens/s mean    : 4.46
+    total gen tokens : 362
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.5097  (accuracy+match+language combined)
+  ✓ 01c_attn_sparge_topk0.5  wall=100s
+    throughput       : 0.375 samples/s
+    e2e latency p50  : 7.9885s
+    e2e latency p95  : 25.8985s
+    compute time mean: 8.374s  (prefill+decode)
+    compute time p50 : 7.261s
+    TTFT mean        : 6.1997s
+    prefill time mean: 4.1693s
+    prefill time p50 : 4.2045s
+    decode time mean : 4.2047s
+    decode time p50  : 2.5198s
+    TPOT mean        : 0.3965s  (~ITL)
+    TPOT p50         : 0.2587s
+    tokens/s mean    : 2.67
+    total gen tokens : 328
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.4341  (accuracy+match+language combined)
+  ✓ 01d_attn_xattn_topk0.5  wall=102s
+    throughput       : 0.342 samples/s
+    e2e latency p50  : 8.5385s
+    e2e latency p95  : 25.623s
+    compute time mean: 9.0481s  (prefill+decode)
+    compute time p50 : 7.2104s
+    TTFT mean        : 6.67s
+    prefill time mean: 4.6642s
+    prefill time p50 : 5.0636s
+    decode time mean : 4.384s
+    decode time p50  : 2.509s
+    TPOT mean        : 0.3926s  (~ITL)
+    TPOT p50         : 0.2544s
+    tokens/s mean    : 2.68
+    total gen tokens : 362
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.3946  (accuracy+match+language combined)
 
   ▶ CACHING ABLATION (Triton, no SD)
-  ✓ 02a_cache_apc_only  wall=607s
-    throughput       : 2.147 samples/s
-    e2e latency p50  : 225.6431s
-    e2e latency p95  : 433.2596s
-    compute time mean: 1.2172s  (prefill+decode)
-    compute time p50 : 0.2304s
-    TTFT mean        : 226.6987s
-    prefill time mean: 0.2079s
-    prefill time p50 : 0.0912s
-    decode time mean : 1.0093s
-    decode time p50  : 0.1419s
-    TPOT mean        : 0.0278s  (~ITL)
-    TPOT p50         : 0.0248s
-    tokens/s mean    : 25.75
-    total gen tokens : 32692
-  ✓ 02b_cache_mm_preprocessor_only  wall=909s
-    throughput       : 1.303 samples/s
-    e2e latency p50  : 358.6424s
-    e2e latency p95  : 672.0261s
-    compute time mean: 16.229s  (prefill+decode)
-    compute time p50 : 5.7637s
-    TTFT mean        : 348.9159s
-    prefill time mean: 3.1545s
-    prefill time p50 : 1.3885s
-    decode time mean : 13.0745s
-    decode time p50  : 2.6966s
-    TPOT mean        : 0.4338s  (~ITL)
-    TPOT p50         : 0.4198s
-    tokens/s mean    : 1.8
-    total gen tokens : 32471
-  ✓ 02c_cache_chunked_mm_only  wall=1134s
-    throughput       : 1.008 samples/s
-    e2e latency p50  : 379.941s
-    e2e latency p95  : 546.7768s
-    compute time mean: 198.4686s  (prefill+decode)
-    compute time p50 : 232.8494s
-    TTFT mean        : 373.1054s
-    prefill time mean: 182.0436s
-    prefill time p50 : 228.2783s
-    decode time mean : 16.425s
-    decode time p50  : 3.2817s
-    TPOT mean        : 0.5025s  (~ITL)
-    TPOT p50         : 0.5297s
-    tokens/s mean    : 0.18
-    total gen tokens : 32658
-  ✓ 02d_cache_apc_and_mm  wall=369s
-    throughput       : 4.423 samples/s
-    e2e latency p50  : 90.4331s
-    e2e latency p95  : 144.9545s
-    compute time mean: 7.5808s  (prefill+decode)
-    compute time p50 : 3.3041s
-    TTFT mean        : 87.5811s
-    prefill time mean: 1.5163s
-    prefill time p50 : 1.0657s
-    decode time mean : 6.0645s
-    decode time p50  : 1.5246s
-    TPOT mean        : 0.2486s  (~ITL)
-    TPOT p50         : 0.1795s
-    tokens/s mean    : 3.46
-    total gen tokens : 32741
-  ✓ 02e_cache_all  wall=352s
-    throughput       : 4.731 samples/s
-    e2e latency p50  : 80.2823s
-    e2e latency p95  : 124.9744s
-    compute time mean: 7.1897s  (prefill+decode)
-    compute time p50 : 3.077s
-    TTFT mean        : 78.6103s
-    prefill time mean: 1.4142s
-    prefill time p50 : 1.0322s
-    decode time mean : 5.7755s
-    decode time p50  : 1.3411s
-    TPOT mean        : 0.2284s  (~ITL)
-    TPOT p50         : 0.1735s
-    tokens/s mean    : 3.42
-    total gen tokens : 32484
+  ✓ 02a_cache_apc_only  wall=121s
+    throughput       : 0.639 samples/s
+    e2e latency p50  : 3.2606s
+    e2e latency p95  : 16.3739s
+    compute time mean: 1.5144s  (prefill+decode)
+    compute time p50 : 0.6232s
+    TTFT mean        : 3.5019s
+    prefill time mean: 0.5966s
+    prefill time p50 : 0.1245s
+    decode time mean : 0.9178s
+    decode time p50  : 0.3143s
+    TPOT mean        : 0.0346s  (~ITL)
+    TPOT p50         : 0.0311s
+    tokens/s mean    : 20.53
+    total gen tokens : 327
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.4302  (accuracy+match+language combined)
+  ✓ 02b_cache_mm_preprocessor_only  wall=126s
+    throughput       : 0.494 samples/s
+    e2e latency p50  : 8.4301s
+    e2e latency p95  : 18.6101s
+    compute time mean: 5.6574s  (prefill+decode)
+    compute time p50 : 4.8893s
+    TTFT mean        : 6.4074s
+    prefill time mean: 2.6497s
+    prefill time p50 : 2.7405s
+    decode time mean : 3.0076s
+    decode time p50  : 2.5963s
+    TPOT mean        : 0.4423s  (~ITL)
+    TPOT p50         : 0.2238s
+    tokens/s mean    : 4.96
+    total gen tokens : 361
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.3986  (accuracy+match+language combined)
+  ✓ 02c_cache_chunked_mm_only  wall=126s
+    throughput       : 0.46 samples/s
+    e2e latency p50  : 7.63s
+    e2e latency p95  : 22.2155s
+    compute time mean: 7.1354s  (prefill+decode)
+    compute time p50 : 6.5342s
+    TTFT mean        : 5.7208s
+    prefill time mean: 3.6685s
+    prefill time p50 : 3.466s
+    decode time mean : 3.4669s
+    decode time p50  : 2.9413s
+    TPOT mean        : 0.4656s  (~ITL)
+    TPOT p50         : 0.3385s
+    tokens/s mean    : 3.74
+    total gen tokens : 360
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.3986  (accuracy+match+language combined)
+  ✓ 02d_cache_apc_and_mm  wall=127s
+    throughput       : 0.592 samples/s
+    e2e latency p50  : 5.0611s
+    e2e latency p95  : 15.289s
+    compute time mean: 4.6266s  (prefill+decode)
+    compute time p50 : 4.1035s
+    TTFT mean        : 4.274s
+    prefill time mean: 2.5454s
+    prefill time p50 : 3.105s
+    decode time mean : 2.0812s
+    decode time p50  : 1.7513s
+    TPOT mean        : 0.3522s  (~ITL)
+    TPOT p50         : 0.1331s
+    tokens/s mean    : 5.79
+    total gen tokens : 361
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.3986  (accuracy+match+language combined)
+  ✓ 02e_cache_all  wall=123s
+    throughput       : 0.604 samples/s
+    e2e latency p50  : 4.8251s
+    e2e latency p95  : 14.983s
+    compute time mean: 4.5177s  (prefill+decode)
+    compute time p50 : 3.9765s
+    TTFT mean        : 4.0207s
+    prefill time mean: 2.4467s
+    prefill time p50 : 2.8648s
+    decode time mean : 2.0709s
+    decode time p50  : 1.7582s
+    TPOT mean        : 0.3504s  (~ITL)
+    TPOT p50         : 0.1337s
+    tokens/s mean    : 5.85
+    total gen tokens : 359
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.3986  (accuracy+match+language combined)
 
   ▶ SPECULATIVE DECODING (Triton, all caches off)
-  ✓ 03a_sd_ngram_k5  wall=1219s
-    throughput       : 0.936 samples/s
-    e2e latency p50  : 410.6764s
-    e2e latency p95  : 552.2572s
-    compute time mean: 86.2266s  (prefill+decode)
-    compute time p50 : 79.9429s
-    TTFT mean        : 394.6336s
-    prefill time mean: 68.1407s
-    prefill time p50 : 64.0941s
-    decode time mean : 18.0859s
-    decode time p50  : 4.0635s
-    TPOT mean        : 0.6746s  (~ITL)
-    TPOT p50         : 0.6532s
-    tokens/s mean    : 0.33
-    total gen tokens : 32688
-  ✓ 03b_sd_draft_2b_k5  wall=1553s
-    throughput       : 0.727 samples/s
-    e2e latency p50  : 482.5847s
-    e2e latency p95  : 916.12s
-    compute time mean: 20.8475s  (prefill+decode)
-    compute time p50 : 17.9935s
-    TTFT mean        : 537.251s
-    prefill time mean: 12.4872s
-    prefill time p50 : 11.6794s
-    decode time mean : 8.3603s
-    decode time p50  : 1.1608s
-    TPOT mean        : 0.2429s  (~ITL)
-    TPOT p50         : 0.189s
-    tokens/s mean    : 1.58
-    total gen tokens : 32582
-  ✓ 03c_sd_eagle3_k5  wall=1125s
-    throughput       : 1.028 samples/s
-    e2e latency p50  : 367.3562s
-    e2e latency p95  : 506.2375s
-    compute time mean: 190.7379s  (prefill+decode)
-    compute time p50 : 231.9231s
-    TTFT mean        : 359.2533s
-    prefill time mean: 179.1677s
-    prefill time p50 : 226.1465s
-    decode time mean : 11.5701s
-    decode time p50  : 3.465s
-    TPOT mean        : 0.6093s  (~ITL)
-    TPOT p50         : 0.4687s
-    tokens/s mean    : 0.2
-    total gen tokens : 32580
+  ✓ 03a_sd_ngram_k5  wall=141s
+    throughput       : 0.403 samples/s
+    e2e latency p50  : 10.4359s
+    e2e latency p95  : 25.0701s
+    compute time mean: 9.4828s  (prefill+decode)
+    compute time p50 : 9.1599s
+    TTFT mean        : 7.5427s
+    prefill time mean: 5.0861s
+    prefill time p50 : 4.8609s
+    decode time mean : 4.3967s
+    decode time p50  : 3.9617s
+    TPOT mean        : 0.6541s  (~ITL)
+    TPOT p50         : 0.4723s
+    tokens/s mean    : 2.63
+    total gen tokens : 327
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.4302  (accuracy+match+language combined)
+  ✓ 03b_sd_draft_2b_k5  wall=176s
+    throughput       : 0.345 samples/s
+    e2e latency p50  : 9.0012s
+    e2e latency p95  : 27.3316s
+    compute time mean: 9.1283s  (prefill+decode)
+    compute time p50 : 8.1345s
+    TTFT mean        : 6.2835s
+    prefill time mean: 3.935s
+    prefill time p50 : 3.9439s
+    decode time mean : 5.1933s
+    decode time p50  : 3.3598s
+    TPOT mean        : 0.5302s  (~ITL)
+    TPOT p50         : 0.3516s
+    tokens/s mean    : 2.6
+    total gen tokens : 361
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.3986  (accuracy+match+language combined)
+  ✓ 03c_sd_eagle3_k5  wall=146s
+    throughput       : 0.418 samples/s
+    e2e latency p50  : 8.4611s
+    e2e latency p95  : 23.1541s
+    compute time mean: 8.2368s  (prefill+decode)
+    compute time p50 : 7.5927s
+    TTFT mean        : 6.9968s
+    prefill time mean: 4.9869s
+    prefill time p50 : 5.0443s
+    decode time mean : 3.2499s
+    decode time p50  : 2.2083s
+    TPOT mean        : 0.3431s  (~ITL)
+    TPOT p50         : 0.2335s
+    tokens/s mean    : 3.33
+    total gen tokens : 360
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.5097  (accuracy+match+language combined)
 
-  ▶ APPLY ALL (Eagle3 + FlashAttention + all caches)
-  ✓ 04_all_eagle3_flash_all_caches  wall=368s
-    throughput       : 4.521 samples/s
-    e2e latency p50  : 83.9104s
-    e2e latency p95  : 122.6767s
-    compute time mean: 29.7139s  (prefill+decode)
-    compute time p50 : 28.2022s
-    TTFT mean        : 82.9071s
-    prefill time mean: 24.9081s
-    prefill time p50 : 23.795s
-    decode time mean : 4.8058s
-    decode time p50  : 1.2704s
-    TPOT mean        : 0.2533s  (~ITL)
-    TPOT p50         : 0.1473s
-    tokens/s mean    : 0.92
-    total gen tokens : 32531
+  ▶ CHUNKED PREFILL BUDGET (--max-num-batched-tokens)
+  ✓ 04a_batched_default  wall=126s
+    throughput       : 0.488 samples/s
+    e2e latency p50  : 6.8329s
+    e2e latency p95  : 20.8998s
+    compute time mean: 6.0166s  (prefill+decode)
+    compute time p50 : 5.1586s
+    TTFT mean        : 5.0285s
+    prefill time mean: 3.0172s
+    prefill time p50 : 2.8904s
+    decode time mean : 2.9995s
+    decode time p50  : 2.4392s
+    TPOT mean        : 0.3922s  (~ITL)
+    TPOT p50         : 0.3052s
+    tokens/s mean    : 4.38
+    total gen tokens : 358
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.5097  (accuracy+match+language combined)
+  ✓ 04b_batched_16384  wall=124s
+    throughput       : 0.511 samples/s
+    e2e latency p50  : 7.1136s
+    e2e latency p95  : 20.9239s
+    compute time mean: 5.9867s  (prefill+decode)
+    compute time p50 : 5.2476s
+    TTFT mean        : 5.4316s
+    prefill time mean: 3.2648s
+    prefill time p50 : 3.2308s
+    decode time mean : 2.7218s
+    decode time p50  : 2.5929s
+    TPOT mean        : 0.4156s  (~ITL)
+    TPOT p50         : 0.1389s
+    tokens/s mean    : 4.31
+    total gen tokens : 328
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.4341  (accuracy+match+language combined)
+  ✓ 04c_batched_16384_apc  wall=122s
+    throughput       : 0.676 samples/s
+    e2e latency p50  : 3.488s
+    e2e latency p95  : 13.2759s
+    compute time mean: 2.3304s  (prefill+decode)
+    compute time p50 : 1.5607s
+    TTFT mean        : 3.6698s
+    prefill time mean: 1.4311s
+    prefill time p50 : 1.2829s
+    decode time mean : 0.8993s
+    decode time p50  : 0.2778s
+    TPOT mean        : 0.0311s  (~ITL)
+    TPOT p50         : 0.0274s
+    tokens/s mean    : 9.87
+    total gen tokens : 360
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.5097  (accuracy+match+language combined)
 
-  ▶ AWQ INT4 QUANTIZATION (no caches, Triton, 16384 budget)
-  ✓ 08a_awq_int4_no_cache  wall=111s
-    throughput       : 0.9 samples/s
-    e2e latency p50  : 53.3289s
-    e2e latency p95  : 103.243s
-    compute time mean: 46.8002s  (prefill+decode)
-    TTFT mean        : 39.4035s
-    prefill time mean: 29.888s
-    prefill time p50 : 30.0544s
-    decode time mean : 16.9123s
-    decode time p50  : 6.5604s
-    TPOT mean        : 1.1721s  (~ITL)
-    TPOT p50         : 1.3634s
-    tokens/s mean    : 0.44
-    total gen tokens : 2806
+  ▶ SEQUENTIAL SCENE INFERENCE (--sequential-scenes)
+  ✓ 05a_batch_all  wall=120s
+    throughput       : 0.71 samples/s
+    e2e latency p50  : 3.3949s
+    e2e latency p95  : 13.2994s
+    compute time mean: 2.6386s  (prefill+decode)
+    compute time p50 : 1.8222s
+    TTFT mean        : 3.4999s
+    prefill time mean: 1.7022s
+    prefill time p50 : 1.2675s
+    decode time mean : 0.9364s
+    decode time p50  : 0.494s
+    TPOT mean        : 0.0577s  (~ITL)
+    TPOT p50         : 0.0287s
+    tokens/s mean    : 8.87
+    total gen tokens : 327
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.5452  (accuracy+match+language combined)
+  ✓ 05b_sequential_scenes  wall=125s
+    throughput       : 0.583 samples/s
+    e2e latency p50  : 2.6535s
+    e2e latency p95  : 12.7769s
+    compute time mean: 1.7888s  (prefill+decode)
+    compute time p50 : 1.0871s
+    TTFT mean        : 2.6656s
+    prefill time mean: 1.0321s
+    prefill time p50 : 0.7718s
+    decode time mean : 0.7567s
+    decode time p50  : 0.2445s
+    TPOT mean        : 0.0288s  (~ITL)
+    TPOT p50         : 0.0244s
+    tokens/s mean    : 13.22
+    total gen tokens : 328
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.5452  (accuracy+match+language combined)
+
+  ▶ SPARSE ATTENTION BACKENDS + 16384 BUDGET (no caches)
+  ✓ 06a_sparge_topk0.5_b16384  wall=103s
+    throughput       : 0.353 samples/s
+    e2e latency p50  : 8.5427s
+    e2e latency p95  : 24.6037s
+    compute time mean: 8.6214s  (prefill+decode)
+    compute time p50 : 6.7512s
+    TTFT mean        : 6.9702s
+    prefill time mean: 4.9432s
+    prefill time p50 : 5.1519s
+    decode time mean : 3.6782s
+    decode time p50  : 1.5993s
+    TPOT mean        : 0.3774s  (~ITL)
+    TPOT p50         : 0.1342s
+    tokens/s mean    : 2.85
+    total gen tokens : 360
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.3986  (accuracy+match+language combined)
+  ✓ 06b_xattn_topk0.5_b16384  wall=100s
+    throughput       : 0.372 samples/s
+    e2e latency p50  : 8.7146s
+    e2e latency p95  : 24.5663s
+    compute time mean: 8.66s  (prefill+decode)
+    compute time p50 : 7.1943s
+    TTFT mean        : 7.0096s
+    prefill time mean: 4.9054s
+    prefill time p50 : 5.1212s
+    decode time mean : 3.7546s
+    decode time p50  : 2.6022s
+    TPOT mean        : 0.4654s  (~ITL)
+    TPOT p50         : 0.1442s
+    tokens/s mean    : 2.7
+    total gen tokens : 327
+    accuracy         : 0.6666666666666666
+    match score      : 0.0
+    final score      : 0.4341  (accuracy+match+language combined)
+
+  ▶ APPLY ALL — BEST CONFIG (Eagle3 + Flash + all caches + 16384)
+  ✓ 07a_all_eagle3_flash_caches  wall=139s
+    throughput       : 0.605 samples/s
+    e2e latency p50  : 4.9103s
+    e2e latency p95  : 15.0833s
+    compute time mean: 3.4889s  (prefill+decode)
+    compute time p50 : 2.698s
+    TTFT mean        : 4.6238s
+    prefill time mean: 2.1353s
+    prefill time p50 : 2.0621s
+    decode time mean : 1.3536s
+    decode time p50  : 0.7739s
+    TPOT mean        : 0.1555s  (~ITL)
+    TPOT p50         : 0.0602s
+    tokens/s mean    : 7.07
+    total gen tokens : 361
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.5097  (accuracy+match+language combined)
+  ✓ 07b_all_eagle3_flash_caches_b16384  wall=205s
+    throughput       : 0.558 samples/s
+    e2e latency p50  : 5.5921s
+    e2e latency p95  : 15.5244s
+    compute time mean: 3.994s  (prefill+decode)
+    compute time p50 : 2.57s
+    TTFT mean        : 5.9181s
+    prefill time mean: 3.0341s
+    prefill time p50 : 2.0226s
+    decode time mean : 0.96s
+    decode time p50  : 0.3048s
+    TPOT mean        : 0.0369s  (~ITL)
+    TPOT p50         : 0.031s
+    tokens/s mean    : 6.01
+    total gen tokens : 328
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.5452  (accuracy+match+language combined)
+
+  ▶ AWQ INT4 QUANTIZATION (no caches, baseline conditions)
+  ✓ 08a_awq_int4_no_cache  wall=108s
+    throughput       : 0.467 samples/s
+    e2e latency p50  : 9.4299s
+    e2e latency p95  : 22.2409s
+    compute time mean: 8.1842s  (prefill+decode)
+    compute time p50 : 7.963s
+    TTFT mean        : 7.5852s
+    prefill time mean: 5.4324s
+    prefill time p50 : 6.0011s
+    decode time mean : 2.7519s
+    decode time p50  : 2.1801s
+    TPOT mean        : 0.5076s  (~ITL)
+    TPOT p50         : 0.1363s
+    tokens/s mean    : 3.4
+    total gen tokens : 313
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.4808  (accuracy+match+language combined)
+  ✓ 08b_awq_int4_all_caches  wall=102s
+    throughput       : 0.765 samples/s
+    e2e latency p50  : 3.4471s
+    e2e latency p95  : 12.4884s
+    compute time mean: 1.6988s  (prefill+decode)
+    compute time p50 : 1.1471s
+    TTFT mean        : 3.6961s
+    prefill time mean: 1.1825s
+    prefill time p50 : 0.9545s
+    decode time mean : 0.5163s
+    decode time p50  : 0.1926s
+    TPOT mean        : 0.0221s  (~ITL)
+    TPOT p50         : 0.0193s
+    tokens/s mean    : 12.74
+    total gen tokens : 311
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.4808  (accuracy+match+language combined)
+
+  ▶ APPLY ALL (Eagle3 + Flash + all caches + 16384 + INT4)
+  ✓ 09_all_awq_eagle3_flash_caches_b16384  wall=181s
+    throughput       : 0.584 samples/s
+    e2e latency p50  : 5.5877s
+    e2e latency p95  : 14.854s
+    compute time mean: 3.3906s  (prefill+decode)
+    compute time p50 : 2.3643s
+    TTFT mean        : 5.9277s
+    prefill time mean: 2.6633s
+    prefill time p50 : 1.9798s
+    decode time mean : 0.7273s
+    decode time p50  : 0.2378s
+    TPOT mean        : 0.0312s  (~ITL)
+    TPOT p50         : 0.0263s
+    tokens/s mean    : 7.11
+    total gen tokens : 313
+    accuracy         : 1.0
+    match score      : 0.0
+    final score      : 0.4808  (accuracy+match+language combined)

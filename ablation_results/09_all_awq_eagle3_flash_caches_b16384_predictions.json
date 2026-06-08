@@ -1,0 +1,42 @@
+[
+  {
+    "id": "0ced08ea43754420a23b2fbec667a763_a0cfd83ec1bc47bdabd4afe3320b303f_0",
+    "answer": "There is a white truck to the front of the scene, a white truck to the front of the scene, and a white truck to the front of the scene. The coordinates of these objects are firstly, (140.1, 119.02), secondly, (114.99, 121.13), and thirdly, (115.0, 121.13)."
+  },
+  {
+    "id": "0ced08ea43754420a23b2fbec667a763_a0cfd83ec1bc47bdabd4afe3320b303f_1",
+    "answer": "No."
+  },
+  {
+    "id": "0ced08ea43754420a23b2fbec667a763_a0cfd83ec1bc47bdabd4afe3320b303f_2",
+    "answer": "The action is to keep going at the same speed. The reason is that there is no safety issue, and the probability is high."
+  },
+  {
+    "id": "0ced08ea43754420a23b2fbec667a763_a0cfd83ec1bc47bdabd4afe3320b303f_3",
+    "answer": "Moderate right turn."
+  },
+  {
+    "id": "0ced08ea43754420a23b2fbec667a763_a0cfd83ec1bc47bdabd4afe3320b303f_4",
+    "answer": "Keep going at the same speed, accelerate, and proceed."
+  },
+  {
+    "id": "0ced08ea43754420a23b2fbec667a763_a0cfd83ec1bc47bdabd4afe3320b303f_5",
+    "answer": "A"
+  },
+  {
+    "id": "1c76efe7d0b048bc815c0445eeaa76ab_578e3abb222b4d0f9c8a4793417ae3d7_0",
+    "answer": "There is a white SUV to the front of the scene, a white SUV to the front of the scene, a white SUV to the back of the scene, and a green light to the front of the scene. The IDs of these objects are <c1,CAM_FRONT,114.0,117.18>, <c2,CAM_FRONT,115.19,117.18>, <c3,CAM_BACK,119.0,129.62>, and <c4,CAM_FRONT,126.11,48.12>."
+  },
+  {
+    "id": "1c76efe7d0b048bc815c0445eeaa76ab_578e3abb222b4d0f9c8a4793417ae3d7_1",
+    "answer": "B"
+  },
+  {
+    "id": "1c76efe7d0b048bc815c0445eeaa76ab_578e3abb222b4d0f9c8a4793417ae3d7_2",
+    "answer": "No."
+  },
+  {
+    "id": "1c76efe7d0b048bc815c0445eeaa76ab_578e3abb222b4d0f9c8a4793417ae3d7_3",
+    "answer": "The action is to keep going at the same speed. The reason is that there is no safety issue, and the probability is high."
+  }
+]
