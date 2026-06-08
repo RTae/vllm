@@ -337,7 +337,7 @@ python scripts/infer_drivelm_lora.py \
   --max-num-batched-tokens 16384
 ```
 
-## Ablation Study of Speculative Decoding
+## Ablation Study
 
 ```bash
 NUM_SAMPLES=1000 ./scripts/ablation_test.sh
@@ -353,3 +353,42 @@ lower samples for faster testing:
 ```bash
 NUM_SAMPLES=10 ./scripts/ablation_test.sh
 ```
+
+Each experiment automatically runs DriveLM quality evaluation after inference. Results are saved to `ablation_results/summary.txt` and individual `*_eval.json` files.
+
+### Results (1120 samples, ~4.5k tokens/request)
+
+| Experiment | Throughput (samples/s) | TTFT mean (s) | Final Score |
+|---|---|---|---|
+| **00 Baseline** (Triton, no caches) | 0.998 | 376.6 | 0.6347 |
+| **01a Flash** Attention | 1.152 | 320.9 | 0.6428 |
+| **01b FlashInfer** | 1.208 | 304.2 | 0.6430 |
+| **01c SpargeAttn** topk=0.5 | 0.992 | 373.4 | 0.6457 |
+| **01d XAttention** topk=0.5 | 0.998 | 370.1 | 0.6375 |
+| **02a APC** only | 2.172 | 225.3 | 0.6357 |
+| **02b MM preprocessor cache** only | 1.313 | 339.9 | 0.6466 |
+| **02c Chunked MM** only | 1.009 | 368.6 | 0.6346 |
+| **02d APC + MM** cache | 4.465 | 85.7 | 0.6443 |
+| **02e All caches** | 4.685 | 78.6 | 0.6387 |
+| **03a N-gram** SD k=5 | 0.954 | 389.3 | 0.6421 |
+| **03b Draft 2B** SD k=5 | 0.736 | 521.6 | 0.6438 |
+| **03c EAGLE3** SD k=5 | 1.030 | 359.8 | 0.6425 |
+| **04a Default** batched tokens (8192) | 1.162 | 322.2 | 0.6431 |
+| **04b 16384** batched tokens | 1.235 | 299.4 | 0.6466 |
+| **04c 16384 + APC** | 5.772 | 60.3 | 0.6387 |
+| **05a All caches** batch | 5.634 | 62.4 | **0.6500** |
+| **05b Sequential scenes** | 1.577 | 0.94 | 0.6448 |
+| **06a SpargeAttn** + 16384 | 1.053 | 348.3 | 0.6405 |
+| **06b XAttention** + 16384 | 1.046 | 350.6 | 0.6396 |
+| **07a Eagle3 + Flash + caches** | 4.527 | 84.3 | 0.6402 |
+| **07b Eagle3 + Flash + caches + 16384** | 5.304 | 69.7 | 0.6490 |
+| **08a AWQ INT4** no caches | 0.957 | 392.8 | 0.5909 |
+| **08b AWQ INT4** all caches | 5.509 | 63.7 | 0.5870 |
+| **09 AWQ + Eagle3 + Flash + caches + 16384** | 4.733 | 80.7 | 0.5899 |
+
+**Key findings:**
+- Best throughput: `04c` (16384 + APC): **5.77 samples/s** (+478% vs baseline)
+- Best quality: `05a` (all caches, batch): final score **0.6500**
+- Best throughput+quality: `07b` (Eagle3 + Flash + all caches + 16384): 5.3 samples/s, score 0.6490
+- AWQ INT4 reduces quality (~0.59 final score) but enables the same throughput as FP16+caches
+- APC is by far the dominant optimization (2–5× throughput, negligible quality loss)
