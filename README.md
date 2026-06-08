@@ -101,6 +101,17 @@ python scripts/quantize_qwen3vl_awq.py \
   --output-dir /workspace/.hf_home/qwen3-vl-8b-awq-int4/ \
   --num-calibration-samples 256
 ```
+run with nohup:
+```bash
+nohup python scripts/quantize_qwen3vl_awq.py \
+  --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
+  --base-model /workspace/.hf_home/qwen3-vl-8b/ \
+  --data datasets/DriveLM_nuScenes/split/val \
+  --output-dir /workspace/.hf_home/qwen3-vl-8b-awq-int4/ \
+  --num-calibration-samples 256 > quantization.log 2>&1 &
+echo "PID: $!"
+tail -f quantization.log
+```
 
 Key arguments:
 
@@ -124,6 +135,10 @@ python scripts/infer_drivelm_lora.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 100 \
+  --attention-backend TRITON_ATTN \
+  --no-prefix-caching \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input \
   --max-num-batched-tokens 16384
 ```
 
@@ -139,7 +154,8 @@ python scripts/infer_drivelm_lora.py \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input
+  --disable-chunked-mm-input \
+  --max-num-batched-tokens 16384
 ```
 
 ### Recommended default for DriveLM
@@ -169,7 +185,8 @@ python scripts/infer_drivelm_lora.py \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input
+  --disable-chunked-mm-input \
+  --max-num-batched-tokens 16384
 ```
 
 #### With draft model
@@ -185,7 +202,8 @@ python scripts/infer_drivelm_lora.py \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input
+  --disable-chunked-mm-input \
+  --max-num-batched-tokens 16384
 ```
 
 #### With EAGLE proposer
@@ -200,7 +218,8 @@ python scripts/infer_drivelm_lora.py \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input
+  --disable-chunked-mm-input \
+  --max-num-batched-tokens 16384
 ```
 
 ### Attention Backends
@@ -214,7 +233,8 @@ python scripts/infer_drivelm_lora.py \
   --num-samples 100 \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input
+  --disable-chunked-mm-input \
+  --max-num-batched-tokens 16384
 ```
 
 #### XAttention (sparse prefill)
@@ -231,7 +251,8 @@ VLLM_WORKER_MULTIPROC_METHOD=spawn python scripts/infer_drivelm_lora.py \
   --attention-backend XATTN \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input
+  --disable-chunked-mm-input \
+  --max-num-batched-tokens 16384
 ```
 
 Optional tuning via environment variables:
@@ -251,7 +272,8 @@ XATTN_THRESHOLD=0.5 XATTN_STRIDE=8 \
   --attention-backend XATTN \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input
+  --disable-chunked-mm-input \
+  --max-num-batched-tokens 16384
 ```
 
 ### Caching
@@ -265,7 +287,8 @@ python scripts/infer_drivelm_lora.py \
   --num-samples 100 \
   --attention-backend TRITON_ATTN \
   --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input
+  --disable-chunked-mm-input \
+  --max-num-batched-tokens 16384
 ```
 
 #### MM preprocessor cache only
@@ -277,7 +300,8 @@ python scripts/infer_drivelm_lora.py \
   --num-samples 100 \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching \
-  --disable-chunked-mm-input
+  --disable-chunked-mm-input \
+  --max-num-batched-tokens 16384
 ```
 
 #### All caches enabled
@@ -287,7 +311,8 @@ python scripts/infer_drivelm_lora.py \
   --base-model /workspace/.hf_home/qwen3-vl-8b/ \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 100 \
-  --attention-backend TRITON_ATTN
+  --attention-backend TRITON_ATTN \
+  --max-num-batched-tokens 16384
 ```
 
 ### Apply all
@@ -299,7 +324,8 @@ python scripts/infer_drivelm_lora.py \
   --dataset /workspace/vllm/datasets/DriveLM_nuScenes/split/val \
   --num-samples 100 \
   --eagle3 /workspace/.hf_home/qwen3-vl-8b-eagle3 \
-  --num-speculative-tokens 5
+  --num-speculative-tokens 5 \
+  --max-num-batched-tokens 16384
 ```
 
 ## Ablation Study of Speculative Decoding

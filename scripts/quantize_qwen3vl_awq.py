@@ -731,6 +731,22 @@ def save_quantized_model(args, model, processor, base_model: str, adapter_path: 
     )
     processor.save_pretrained(output_dir)
 
+    # Copy full tokenizer files from base model to ensure correct tokenization.
+    # processor.save_pretrained() produces a minimal tokenizer_config.json that
+    # omits special tokens, causing image-token truncation on 6-camera inputs.
+    import shutil as _shutil
+    _tokenizer_files = [
+        "tokenizer_config.json",
+        "tokenizer.json",
+        "vocab.json",
+        "merges.txt",
+        "chat_template.json",
+    ]
+    for _tf in _tokenizer_files:
+        _src = Path(base_model) / _tf
+        if _src.exists():
+            _shutil.copy2(_src, output_dir / _tf)
+
     try:
         generation_config = GenerationConfig.from_pretrained(
             base_model,
