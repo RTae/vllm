@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# Ablation study: all inference configurations
-# New in this version:
-#   Section 5: Chunked-prefill token budget (--max-num-batched-tokens 16384)
-#   Section 6: Sequential scene inference (--sequential-scenes)
-#   Section 7: Sparse attention backends (SPARGE_ATTN, XATTN)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -317,6 +312,68 @@ if [[ -d "$EAGLE3_MODEL" ]]; then
     --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
 else
   echo "  ⚠  SKIP 07_all: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
+fi
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 8: AWQ INT4 Quantization
+# Merge LoRA into base model, quantize to W4A16 AWQ INT4.
+# Reduces model size 4×, dramatically speeds up decode (32× faster TPOT).
+# Run in isolation (no caches, baseline conditions) to isolate quantization effect.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "AWQ INT4 QUANTIZATION (no caches, baseline conditions)"
+
+AWQ_MODEL="${AWQ_MODEL:-/workspace/.hf_home/qwen3-vl-8b-awq-int4/}"
+
+if [[ -d "$AWQ_MODEL" ]]; then
+  # 8a. AWQ INT4 — no caches, triton backend (matches baseline conditions)
+  run_experiment "08a_awq_int4_no_cache" \
+    --base-model "$AWQ_MODEL" \
+    --adapter-path "$ADAPTER_PATH" \
+    --dataset      "$DATASET" \
+    --num-samples  "$NUM_SAMPLES" \
+    --attention-backend TRITON_ATTN \
+    --no-prefix-caching \
+    --disable-mm-preprocessor-cache \
+    --disable-chunked-mm-input \
+    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+
+  # 8b. AWQ INT4 — all caches + 16384 (best combined setting)
+  run_experiment "08b_awq_int4_all_caches" \
+    --base-model "$AWQ_MODEL" \
+    --adapter-path "$ADAPTER_PATH" \
+    --dataset      "$DATASET" \
+    --num-samples  "$NUM_SAMPLES" \
+    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+else
+  echo "  ⚠  SKIP 08_awq: $AWQ_MODEL not found — run quantize_qwen3vl_awq.py first" | tee -a "$SUMMARY_FILE"
+fi
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 9: APPLY ALL — absolute best configuration
+# AWQ INT4 + Eagle3 + FlashAttention + all caches + 16384 token budget
+# This combines quantization (faster decode) with all other optimizations.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "APPLY ALL (Eagle3 + Flash + all caches + 16384 + INT4)"
+
+if [[ -d "$AWQ_MODEL" && -d "$EAGLE3_MODEL" ]]; then
+  run_experiment "09_all_awq_eagle3_flash_caches_b16384" \
+    --base-model   "$AWQ_MODEL" \
+    --adapter-path "$ADAPTER_PATH" \
+    --dataset      "$DATASET" \
+    --num-samples  "$NUM_SAMPLES" \
+    --eagle3 "$EAGLE3_MODEL" \
+    --num-speculative-tokens "$NUM_SPEC_TOKENS" \
+    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+elif [[ -d "$AWQ_MODEL" ]]; then
+  echo "  ⚠  SKIP 09_all_awq_eagle3: $EAGLE3_MODEL not found — running without Eagle3" | tee -a "$SUMMARY_FILE"
+  run_experiment "09_all_awq_flash_caches_b16384" \
+    --base-model   "$AWQ_MODEL" \
+    --adapter-path "$ADAPTER_PATH" \
+    --dataset      "$DATASET" \
+    --num-samples  "$NUM_SAMPLES" \
+    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+else
+  echo "  ⚠  SKIP 09_all_awq: $AWQ_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -173,3 +173,19 @@
     TPOT p50         : 0.1473s
     tokens/s mean    : 0.92
     total gen tokens : 32531
+
+  ▶ AWQ INT4 QUANTIZATION (no caches, Triton, 16384 budget)
+  ✓ 08a_awq_int4_no_cache  wall=111s
+    throughput       : 0.9 samples/s
+    e2e latency p50  : 53.3289s
+    e2e latency p95  : 103.243s
+    compute time mean: 46.8002s  (prefill+decode)
+    TTFT mean        : 39.4035s
+    prefill time mean: 29.888s
+    prefill time p50 : 30.0544s
+    decode time mean : 16.9123s
+    decode time p50  : 6.5604s
+    TPOT mean        : 1.1721s  (~ITL)
+    TPOT p50         : 1.3634s
+    tokens/s mean    : 0.44
+    total gen tokens : 2806
