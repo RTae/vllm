@@ -93,6 +93,20 @@ python scripts/create_drivelm_nuscenes.py
 
 ### Run AWQ INT4 quantization
 
+Key arguments:
+
+| Argument | Default | Description |
+|---|---|---|
+| `--adapter-path` | `outputs/qwen3vl` | PEFT LoRA adapter directory |
+| `--base-model` | auto from adapter_config | Qwen3-VL base model path |
+| `--data` | DriveLM val split | Calibration dataset (load_from_disk) |
+| `--output-dir` | `outputs/qwen3vl_awq_int4` | Where to save the quantized model |
+| `--num-calibration-samples` | 256 | Number of samples for AWQ calibration |
+| `--max-seq-length` | 2048 | Max token length for calibration |
+| `--num-images` | 6 | Images per calibration sample |
+| `--scheme` | `W4A16_ASYM` | Quantization scheme (AWQ INT4 weight-only) |
+| `--ignore` | `lm_head`, `visual.*` | Layers kept in full precision |
+
 ```bash
 python scripts/quantize_qwen3vl_awq.py \
   --adapter-path /workspace/vllm/models/Qwen3-VL-8B-Instruct \
@@ -113,22 +127,17 @@ echo "PID: $!"
 tail -f quantization.log
 ```
 
-Key arguments:
+> **Note:** After quantization, copy the base model's tokenizer files to the quantized output
+> directory (done automatically if you use the updated `quantize_qwen3vl_awq.py`):
+> ```bash
+> cp /workspace/.hf_home/qwen3-vl-8b/tokenizer*.json \
+>    /workspace/.hf_home/qwen3-vl-8b/vocab.json \
+>    /workspace/.hf_home/qwen3-vl-8b/merges.txt \
+>    /workspace/.hf_home/qwen3-vl-8b/chat_template.json \
+>    /workspace/.hf_home/qwen3-vl-8b-awq-int4/
+> ```
 
-| Argument | Default | Description |
-|---|---|---|
-| `--adapter-path` | `outputs/qwen3vl` | PEFT LoRA adapter directory |
-| `--base-model` | auto from adapter_config | Qwen3-VL base model path |
-| `--data` | DriveLM val split | Calibration dataset (load_from_disk) |
-| `--output-dir` | `outputs/qwen3vl_awq_int4` | Where to save the quantized model |
-| `--num-calibration-samples` | 256 | Number of samples for AWQ calibration |
-| `--max-seq-length` | 2048 | Max token length for calibration |
-| `--num-images` | 6 | Images per calibration sample |
-| `--scheme` | `W4A16_ASYM` | Quantization scheme (AWQ INT4 weight-only) |
-| `--ignore` | `lm_head`, `visual.*` | Layers kept in full precision |
-
-### Inference with quantized model
-
+### Inference with AWQ INT4 Quantized Model
 ```bash
 python scripts/infer_drivelm_lora.py \
   --base-model /workspace/.hf_home/qwen3-vl-8b-awq-int4/ \
