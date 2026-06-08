@@ -151,7 +151,6 @@ class evaluation_suit():
             self.match["GPT"].append((answer, GT))
 
     def evaluation(self):
-        print("evaluation start!")
         scores = {}
         scores["accuracy"] = self.eval_acc()
         scores["language"] = self.eval_language()
