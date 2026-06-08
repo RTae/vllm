@@ -1,6 +1,6 @@
-{'testlen': 98, 'reflen': 112, 'guess': [98, 96, 94, 92], 'correct': [90, 82, 74, 66]}
-ratio: 0.8749999999921875
-accuracy score:  0.6666666666666666
-match score:     0.0
-language score:  {'val/Bleu_1': 0.7961123568971847, 'val/Bleu_2': 0.7677811716755717, 'val/Bleu_3': 0.7382082666352074, 'val/Bleu_4': 0.7072332785193658, 'val/ROUGE_L': np.float64(0.7992412128964734), 'val/CIDEr': np.float64(3.5564199197679516)}
-final combined score: 0.4341
+{'testlen': 7545, 'reflen': 8217, 'guess': [7545, 7407, 7269, 7131], 'correct': [6152, 5386, 4713, 4103]}
+ratio: 0.9182183278567703
+accuracy score:  0.8903225806451613
+match score:     56.209149649237474
+language score:  {'val/Bleu_1': 0.7458927421616186, 'val/Bleu_2': 0.704384583437068, 'val/Bleu_3': 0.6651515150474169, 'val/Bleu_4': 0.6273473000877836, 'val/ROUGE_L': np.float64(0.7272649778615683), 'val/CIDEr': np.float64(0.4902875383025007)}
+final combined score: 0.6466
