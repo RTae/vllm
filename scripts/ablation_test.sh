@@ -16,6 +16,8 @@ NUM_SAMPLES="${NUM_SAMPLES:--1}"
 NUM_SPEC_TOKENS="${NUM_SPEC_TOKENS:-5}"
 # Token budget for chunked prefill (DriveLM seqs ~8421 tokens → 2 chunks at 8192 default)
 MAX_BATCHED_TOKENS="${MAX_BATCHED_TOKENS:-16384}"
+# Ground-truth reference file for evaluation.py
+VAL_COT="${VAL_COT:-$REPO_ROOT/datasets/DriveLM_nuScenes/refs/val_cot.json}"
 
 # ── Results directory ────────────────────────────────────────────────────────
 RESULTS_DIR="$REPO_ROOT/ablation_results"
@@ -24,7 +26,43 @@ mkdir -p "$RESULTS_DIR"
 SUMMARY_FILE="$RESULTS_DIR/summary.txt"
 : > "$SUMMARY_FILE"
 
-# ── Helper ───────────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+# Run evaluation.py on a metrics JSON and append scores to summary
+run_eval() {
+  local name="$1"
+  local metrics_file="$RESULTS_DIR/${name}_metrics.json"
+  local pred_file="$RESULTS_DIR/${name}_predictions.json"
+  local eval_file="$RESULTS_DIR/${name}_eval.json"
+
+  if [[ ! -f "$metrics_file" ]]; then
+    echo "    [eval] SKIP — metrics file not found: $metrics_file" | tee -a "$SUMMARY_FILE"
+    return
+  fi
+  if [[ ! -f "$VAL_COT" ]]; then
+    echo "    [eval] SKIP — val_cot.json not found: $VAL_COT" | tee -a "$SUMMARY_FILE"
+    return
+  fi
+
+  # Convert inference output → evaluation format
+  "$PYTHON" "$REPO_ROOT/scripts/convert_metrics_to_eval_format.py" \
+    --src "$metrics_file" --dst "$pred_file" 2>/dev/null
+
+  # Run evaluation and capture scores
+  eval_output=$("$PYTHON" "$REPO_ROOT/scripts/evaluation.py" \
+    --src "$pred_file" --tgt "$VAL_COT" 2>/dev/null)
+
+  accuracy=$(echo "$eval_output" | grep "accuracy score" | awk '{print $NF}')
+  match=$(echo "$eval_output" | grep "match score" | awk '{print $NF}')
+  final=$(echo "$eval_output" | grep "final combined score" | awk '{print $NF}')
+
+  echo "    accuracy         : $accuracy" | tee -a "$SUMMARY_FILE"
+  echo "    match score      : $match" | tee -a "$SUMMARY_FILE"
+  echo "    final score      : $final  (accuracy+match+language combined)" | tee -a "$SUMMARY_FILE"
+
+  # Save full eval output
+  echo "$eval_output" > "$eval_file"
+}
 run_experiment() {
   local name="$1"
   shift
@@ -67,6 +105,8 @@ print(f"    TPOT p50         : {a.get('tpot_p50_s')}s")
 print(f"    tokens/s mean    : {a.get('tokens_per_second_mean')}")
 print(f"    total gen tokens : {a.get('total_gen_tokens')}")
 PYEOF
+      # Run DriveLM evaluation (accuracy, match, language scores)
+      run_eval "$name"
     fi
   else
     echo "  ✗ $name FAILED after ${elapsed}s (exit $exit_code)" | tee -a "$SUMMARY_FILE"
