@@ -137,12 +137,12 @@ COMMON=(
 )
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 0: Baseline (Triton, all caches off)
+# Section 0: Base family
 # Everything else is compared against this.
 # ════════════════════════════════════════════════════════════════════════════════
 print_section() { echo ""; echo ""; echo "  ▶ $1"; echo "" | tee -a "$SUMMARY_FILE"; echo "  ▶ $1" >> "$SUMMARY_FILE"; }
 
-print_section "BASELINE (Triton, all caches off)"
+print_section "BASE: Baseline"
 
 NO_CACHE=(
   --attention-backend TRITON_ATTN
@@ -156,10 +156,10 @@ run_experiment "base_baseline" \
   "${NO_CACHE[@]}"
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 1: Attention Backends
+# Section 1: Attn family
 # Fixed: all caches off, no SD — isolates kernel differences.
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "ATTENTION BACKENDS (all caches off)"
+print_section "ATTN: Attention Backends"
 
 # 1a. FlashAttention (default backend)
 run_experiment "attn_flashattention" \
@@ -195,10 +195,10 @@ run_experiment "attn_xattention_0p5" \
   --disable-chunked-mm-input
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 2: Caching Ablation
+# Section 2: Cache family (Triton)
 # Fixed: Triton backend, no SD — add one cache at a time.
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "CACHING ABLATION (Triton, no SD)"
+print_section "CACHE: Triton"
 
 # 2a. APC only
 run_experiment "cache_apc_only" \
@@ -228,36 +228,36 @@ run_experiment "cache_apc_plus_mm" \
   --disable-chunked-mm-input
 
 # 2e. All caches enabled
-run_experiment "cache_all" \
+run_experiment "cache_all_caches" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 3: FlashAttention cache ablation
+# Section 3: Cache family (FlashAttention extension)
 # Adds the missing cache points under the default FlashAttention backend.
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "FLASHATTENTION CACHE ABLATION"
+print_section "CACHE: FlashAttention"
 
 # 3a. FlashAttention + APC only
-run_experiment "cache_flash_apc_only" \
+run_experiment "cache_flashattention_apc_only" \
   "${COMMON[@]}" \
   --disable-mm-preprocessor-cache \
   --disable-chunked-mm-input
 
 # 3b. FlashAttention + MM preprocessor cache only
-run_experiment "cache_flash_mm_prep" \
+run_experiment "cache_flashattention_mm_prep" \
   "${COMMON[@]}" \
   --no-prefix-caching \
   --disable-chunked-mm-input
 
-# 3c. FlashAttention + all caches is provided by combined_flashattention_cache.
-echo "  ↳ combined_flashattention_cache provides the FlashAttention + all caches point" | tee -a "$SUMMARY_FILE"
+# 3c. FlashAttention + all caches is provided by combined_flashattention_plus_cache.
+echo "  ↳ combined_flashattention_plus_cache provides the FlashAttention + all caches point" | tee -a "$SUMMARY_FILE"
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 4: Speculative decoding k sweep
+# Section 4: SD family (k sweep)
 # Fixed: Triton + all caches off — isolates SD strategy across k values.
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "SPECULATIVE DECODING K SWEEP (Triton, all caches off)"
+print_section "SD: K Sweep"
 
 SD_BASE=(
   "${COMMON[@]}"
@@ -298,10 +298,10 @@ else
 fi
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 5: Quantization
+# Section 5: Quant family
 # Matches the table's quantization rows: AWQ and AWQ + FlashAttention.
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "QUANTIZATION"
+print_section "QUANT: Quantization"
 
 AWQ_MODEL="${AWQ_MODEL:-/workspace/.hf_home/qwen3-vl-8b-awq-int4/}"
 
@@ -318,7 +318,7 @@ if [[ -d "$AWQ_MODEL" ]]; then
     --disable-chunked-mm-input
 
   # 5b. AWQ + FlashAttention — no caches
-  run_experiment "quant_awq_flashattention" \
+  run_experiment "quant_awq_plus_flashattention" \
     --base-model "$AWQ_MODEL" \
     --adapter-path "$ADAPTER_PATH" \
     --dataset      "$DATASET" \
@@ -327,38 +327,38 @@ if [[ -d "$AWQ_MODEL" ]]; then
     --disable-mm-preprocessor-cache \
     --disable-chunked-mm-input
 else
-  echo "  ⚠  SKIP quant: $AWQ_MODEL not found — run quantize_qwen3vl_awq.py first" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP quant_awq sweep: $AWQ_MODEL not found — run quantize_qwen3vl_awq.py first" | tee -a "$SUMMARY_FILE"
 fi
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 6: Combined configurations
+# Section 6: Combined family
 # Matches the table's combined rows.
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "COMBINED CONFIGURATIONS"
+print_section "COMBINED: Production Candidates"
 
 # 6a. FlashAttention + cache
-run_experiment "combined_flashattention_cache" \
+run_experiment "combined_flashattention_plus_cache" \
   "${COMMON[@]}"
 
 # 6b. AWQ + FlashAttention + cache
 if [[ -d "$AWQ_MODEL" ]]; then
-  run_experiment "combined_awq_flashattention_cache" \
+  run_experiment "combined_awq_plus_flashattention_plus_cache" \
     --base-model   "$AWQ_MODEL" \
     --adapter-path "$ADAPTER_PATH" \
     --dataset      "$DATASET" \
     --num-samples  "$NUM_SAMPLES"
 else
-  echo "  ⚠  SKIP combined_awq_flashattention_cache: $AWQ_MODEL not found" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP combined_awq_plus_flashattention_plus_cache: $AWQ_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 
 # 6c. Eagle3 + FlashAttention + cache
 if [[ -d "$EAGLE3_MODEL" ]]; then
-  run_experiment "combined_eagle3_flashattention_cache" \
+  run_experiment "combined_eagle3_plus_flashattention_plus_cache" \
     "${COMMON[@]}" \
     --eagle3 "$EAGLE3_MODEL" \
     --num-speculative-tokens "$NUM_SPEC_TOKENS"
 else
-  echo "  ⚠  SKIP combined_eagle3_flashattention_cache: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP combined_eagle3_plus_flashattention_plus_cache: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
