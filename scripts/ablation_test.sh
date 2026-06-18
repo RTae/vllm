@@ -340,7 +340,23 @@ print_section "COMBINED: Production Candidates"
 run_experiment "combined_flashattention_plus_cache" \
   "${COMMON[@]}"
 
-# 6b. AWQ + FlashAttention + cache
+# 6b. FlashInfer + cache
+run_experiment "combined_flashinfer_plus_cache" \
+  "${COMMON[@]}" \
+  --attention-backend FLASHINFER
+
+# 6c. Draft 2B + FlashAttention + cache
+if [[ -d "$DRAFT_MODEL" ]]; then
+  run_experiment "combined_draft2b_plus_flashattention_plus_cache" \
+    "${COMMON[@]}" \
+    --speculative-decoding \
+    --draft-model "$DRAFT_MODEL" \
+    --num-speculative-tokens "$NUM_SPEC_TOKENS"
+else
+  echo "  ⚠  SKIP combined_draft2b_plus_flashattention_plus_cache: $DRAFT_MODEL not found" | tee -a "$SUMMARY_FILE"
+fi
+
+# 6d. AWQ + FlashAttention + cache
 if [[ -d "$AWQ_MODEL" ]]; then
   run_experiment "combined_awq_plus_flashattention_plus_cache" \
     --base-model   "$AWQ_MODEL" \
@@ -351,7 +367,7 @@ else
   echo "  ⚠  SKIP combined_awq_plus_flashattention_plus_cache: $AWQ_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 
-# 6c. Eagle3 + FlashAttention + cache
+# 6e. Eagle3 + FlashAttention + cache
 if [[ -d "$EAGLE3_MODEL" ]]; then
   run_experiment "combined_eagle3_plus_flashattention_plus_cache" \
     "${COMMON[@]}" \
@@ -359,6 +375,19 @@ if [[ -d "$EAGLE3_MODEL" ]]; then
     --num-speculative-tokens "$NUM_SPEC_TOKENS"
 else
   echo "  ⚠  SKIP combined_eagle3_plus_flashattention_plus_cache: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
+fi
+
+# 6f. AWQ + Eagle3 + FlashAttention + cache
+if [[ -d "$AWQ_MODEL" && -d "$EAGLE3_MODEL" ]]; then
+  run_experiment "combined_awq_plus_eagle3_plus_flashattention_plus_cache" \
+    --base-model   "$AWQ_MODEL" \
+    --adapter-path "$ADAPTER_PATH" \
+    --dataset      "$DATASET" \
+    --num-samples  "$NUM_SAMPLES" \
+    --eagle3 "$EAGLE3_MODEL" \
+    --num-speculative-tokens "$NUM_SPEC_TOKENS"
+else
+  echo "  ⚠  SKIP combined_awq_plus_eagle3_plus_flashattention_plus_cache: AWQ and/or Eagle3 model not found" | tee -a "$SUMMARY_FILE"
 fi
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
