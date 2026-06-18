@@ -14,7 +14,8 @@ EAGLE3_MODEL="${EAGLE3_MODEL:-/workspace/.hf_home/qwen3-vl-8b-eagle3}"
 DATASET="${DATASET:-/workspace/vllm/datasets/DriveLM_nuScenes/split/val}"
 NUM_SAMPLES="${NUM_SAMPLES:--1}"
 NUM_SPEC_TOKENS="${NUM_SPEC_TOKENS:-5}"
-# Token budget for chunked prefill (DriveLM seqs ~8421 tokens → 2 chunks at 8192 default)
+# Default token budget for all runs. DriveLM seqs are ~8421 tokens, so 16384
+# keeps each request in a single prefill chunk unless a run overrides it.
 MAX_BATCHED_TOKENS="${MAX_BATCHED_TOKENS:-16384}"
 # Ground-truth reference file for evaluation.py
 VAL_COT="${VAL_COT:-$REPO_ROOT/datasets/DriveLM_nuScenes/refs/val_cot.json}"
@@ -68,6 +69,19 @@ run_experiment() {
   shift
   local log_file="$RESULTS_DIR/${name}.log"
   local metrics_file="$RESULTS_DIR/${name}_metrics.json"
+  local infer_args=("$@")
+  local has_max_batched_tokens=false
+
+  for arg in "${infer_args[@]}"; do
+    if [[ "$arg" == "--max-num-batched-tokens" ]]; then
+      has_max_batched_tokens=true
+      break
+    fi
+  done
+
+  if [[ "$has_max_batched_tokens" == false ]]; then
+    infer_args+=(--max-num-batched-tokens "$MAX_BATCHED_TOKENS")
+  fi
 
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -77,7 +91,7 @@ run_experiment() {
   local start_ts
   start_ts=$(date +%s)
 
-  "$PYTHON" "$INFER" "$@" --output-metrics "$metrics_file" 2>&1 | tee "$log_file"
+  "$PYTHON" "$INFER" "${infer_args[@]}" --output-metrics "$metrics_file" 2>&1 | tee "$log_file"
 
   local end_ts exit_code=${PIPESTATUS[0]}
   end_ts=$(date +%s)
@@ -136,7 +150,7 @@ NO_CACHE=(
   --disable-chunked-mm-input
 )
 
-run_experiment "00_baseline" \
+run_experiment "base_baseline" \
   "${COMMON[@]}" \
   "${NO_CACHE[@]}"
 
@@ -147,14 +161,14 @@ run_experiment "00_baseline" \
 print_section "ATTENTION BACKENDS (all caches off)"
 
 # 1a. FlashAttention (default backend)
-run_experiment "01a_attn_flash" \
+run_experiment "attn_flashattention" \
   "${COMMON[@]}" \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache \
   --disable-chunked-mm-input
 
 # 1b. FlashInfer
-run_experiment "01b_attn_flashinfer" \
+run_experiment "attn_flashinfer" \
   "${COMMON[@]}" \
   --attention-backend FLASHINFER \
   --no-prefix-caching \
@@ -163,7 +177,7 @@ run_experiment "01b_attn_flashinfer" \
 
 # 1c. SPARGE_ATTN (topk=0.5) — sparse prefill, paged kernel, no gather
 SPARGE_ATTN_TOPK=0.5 \
-run_experiment "01c_attn_sparge_topk0.5" \
+run_experiment "attn_spargeattn_0p5" \
   "${COMMON[@]}" \
   --attention-backend SPARGE_ATTN \
   --no-prefix-caching \
@@ -172,7 +186,7 @@ run_experiment "01c_attn_sparge_topk0.5" \
 
 # 1d. XAttention (topk=0.5, stride=8) — block-level importance scoring
 XATTN_THRESHOLD=0.5 XATTN_STRIDE=8 \
-run_experiment "01d_attn_xattn_topk0.5" \
+run_experiment "attn_xattention_0p5" \
   "${COMMON[@]}" \
   --attention-backend XATTN \
   --no-prefix-caching \
@@ -186,34 +200,34 @@ run_experiment "01d_attn_xattn_topk0.5" \
 print_section "CACHING ABLATION (Triton, no SD)"
 
 # 2a. APC only
-run_experiment "02a_cache_apc_only" \
+run_experiment "cache_apc_only" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN \
   --disable-mm-preprocessor-cache \
   --disable-chunked-mm-input
 
 # 2b. MM preprocessor cache only
-run_experiment "02b_cache_mm_preprocessor_only" \
+run_experiment "cache_mm_prep" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching \
   --disable-chunked-mm-input
 
 # 2c. Chunked MM input only
-run_experiment "02c_cache_chunked_mm_only" \
+run_experiment "cache_chunked_mm" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN \
   --no-prefix-caching \
   --disable-mm-preprocessor-cache
 
 # 2d. APC + MM preprocessor cache
-run_experiment "02d_cache_apc_and_mm" \
+run_experiment "cache_apc_plus_mm" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN \
   --disable-chunked-mm-input
 
 # 2e. All caches enabled
-run_experiment "02e_cache_all" \
+run_experiment "cache_all" \
   "${COMMON[@]}" \
   --attention-backend TRITON_ATTN
 
@@ -229,144 +243,43 @@ SD_BASE=(
 )
 
 # 3a. N-gram
-run_experiment "03a_sd_ngram_k${NUM_SPEC_TOKENS}" \
+run_experiment "sd_ngram_k${NUM_SPEC_TOKENS}" \
   "${SD_BASE[@]}" \
   --ngram \
   --num-speculative-tokens "$NUM_SPEC_TOKENS"
 
 # 3b. Draft model (merged 2B LoRA)
 if [[ -d "$DRAFT_MODEL" ]]; then
-  run_experiment "03b_sd_draft_2b_k${NUM_SPEC_TOKENS}" \
+  run_experiment "sd_draft_2b_k${NUM_SPEC_TOKENS}" \
     "${SD_BASE[@]}" \
     --speculative-decoding \
     --draft-model "$DRAFT_MODEL" \
     --num-speculative-tokens "$NUM_SPEC_TOKENS"
 else
-  echo "  ⚠  SKIP 03b_sd_draft_2b: $DRAFT_MODEL not found" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP sd_draft_2b: $DRAFT_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 
 # 3c. EAGLE3
 if [[ -d "$EAGLE3_MODEL" ]]; then
-  run_experiment "03c_sd_eagle3_k${NUM_SPEC_TOKENS}" \
+  run_experiment "sd_eagle3_k${NUM_SPEC_TOKENS}" \
     "${SD_BASE[@]}" \
     --eagle3 "$EAGLE3_MODEL" \
     --num-speculative-tokens "$NUM_SPEC_TOKENS"
 else
-  echo "  ⚠  SKIP 03c_sd_eagle3: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP sd_eagle3: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 4: Chunked-prefill token budget
-# DriveLM sequences are ~8421 tokens (6 cameras). Default max_num_batched_tokens=8192
-# splits each into 2 prefill chunks. Setting 16384 processes in 1 chunk, saving
-# one full 28-layer LLM forward pass (~465ms/request).
+# Section 4: Quantization
+# Matches the table's quantization rows: AWQ and AWQ + FlashAttention.
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "CHUNKED PREFILL BUDGET (--max-num-batched-tokens)"
-
-# 4a. Default (vLLM heuristic, typically 8192)
-run_experiment "04a_batched_default" \
-  "${COMMON[@]}" \
-  --no-prefix-caching \
-  --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input
-
-# 4b. 16384 — fits each DriveLM sequence in 1 prefill step
-run_experiment "04b_batched_16384" \
-  "${COMMON[@]}" \
-  --no-prefix-caching \
-  --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input \
-  --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
-
-# 4c. 16384 + APC: best combined throughput setting
-run_experiment "04c_batched_16384_apc" \
-  "${COMMON[@]}" \
-  --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
-
-# ════════════════════════════════════════════════════════════════════════════════
-# Section 5: Sequential scene inference
-# Submits one scene at a time (all questions per scene in one generate() call).
-# Guarantees 100% intra-scene APC hit rate — image KV blocks cannot be evicted
-# between questions from the same scene.
-# Trade-off: lower GPU utilisation (-28% throughput), but 15× lower p50 latency.
-# ════════════════════════════════════════════════════════════════════════════════
-print_section "SEQUENTIAL SCENE INFERENCE (--sequential-scenes)"
-
-# 5a. Default batch (all at once) — reference for this section
-run_experiment "05a_batch_all" \
-  "${COMMON[@]}" \
-  --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
-
-# 5b. Sequential scenes (one generate() per scene)
-run_experiment "05b_sequential_scenes" \
-  "${COMMON[@]}" \
-  --max-num-batched-tokens "$MAX_BATCHED_TOKENS" \
-  --sequential-scenes
-
-# ════════════════════════════════════════════════════════════════════════════════
-# Section 6: Sparse attention backends
-# Both require VLLM_WORKER_MULTIPROC_METHOD=spawn (set in infer script).
-# At ~8K tokens attention = 0.5% of prefill; gains expected at ≥32K tokens.
-# ════════════════════════════════════════════════════════════════════════════════
-print_section "SPARSE ATTENTION BACKENDS + 16384 BUDGET (no caches)"
-
-# 6a. SPARGE_ATTN (topk=0.5) — paged kernel, no gather, native GQA
-SPARGE_ATTN_TOPK=0.5 \
-run_experiment "06a_sparge_topk0.5_b16384" \
-  "${COMMON[@]}" \
-  --no-prefix-caching \
-  --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input \
-  --attention-backend SPARGE_ATTN \
-  --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
-
-# 6b. XATTN (topk=0.5, stride=8) — block-level importance scoring
-XATTN_THRESHOLD=0.5 XATTN_STRIDE=8 \
-run_experiment "06b_xattn_topk0.5_b16384" \
-  "${COMMON[@]}" \
-  --no-prefix-caching \
-  --disable-mm-preprocessor-cache \
-  --disable-chunked-mm-input \
-  --attention-backend XATTN \
-  --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
-
-# ════════════════════════════════════════════════════════════════════════════════
-# Section 7: Apply ALL — best configuration
-# Eagle3 + FlashAttention + all caches + 16384 token budget
-# This is the recommended production setting.
-# ════════════════════════════════════════════════════════════════════════════════
-print_section "APPLY ALL — BEST CONFIG (Eagle3 + Flash + all caches + 16384)"
-
-if [[ -d "$EAGLE3_MODEL" ]]; then
-  # 7a. Original apply-all (without 16384 — backward compat with previous results)
-  run_experiment "07a_all_eagle3_flash_caches" \
-    "${COMMON[@]}" \
-    --eagle3 "$EAGLE3_MODEL" \
-    --num-speculative-tokens "$NUM_SPEC_TOKENS"
-
-  # 7b. Best: apply-all + 16384 budget — recommended default
-  run_experiment "07b_all_eagle3_flash_caches_b16384" \
-    "${COMMON[@]}" \
-    --eagle3 "$EAGLE3_MODEL" \
-    --num-speculative-tokens "$NUM_SPEC_TOKENS" \
-    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
-else
-  echo "  ⚠  SKIP 07_all: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
-fi
-
-# ════════════════════════════════════════════════════════════════════════════════
-# Section 8: AWQ INT4 Quantization
-# Merge LoRA into base model, quantize to W4A16 AWQ INT4.
-# Reduces model size 4×, dramatically speeds up decode (32× faster TPOT).
-# Run in isolation (no caches, baseline conditions) to isolate quantization effect.
-# ════════════════════════════════════════════════════════════════════════════════
-print_section "AWQ INT4 QUANTIZATION (no caches, baseline conditions)"
+print_section "QUANTIZATION"
 
 AWQ_MODEL="${AWQ_MODEL:-/workspace/.hf_home/qwen3-vl-8b-awq-int4/}"
 
 if [[ -d "$AWQ_MODEL" ]]; then
-  # 8a. AWQ INT4 — no caches, triton backend (matches baseline conditions)
-  run_experiment "08a_awq_int4_no_cache" \
+  # 4a. AWQ — no caches, Triton backend
+  run_experiment "quant_awq" \
     --base-model "$AWQ_MODEL" \
     --adapter-path "$ADAPTER_PATH" \
     --dataset      "$DATASET" \
@@ -374,46 +287,50 @@ if [[ -d "$AWQ_MODEL" ]]; then
     --attention-backend TRITON_ATTN \
     --no-prefix-caching \
     --disable-mm-preprocessor-cache \
-    --disable-chunked-mm-input \
-    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+    --disable-chunked-mm-input
 
-  # 8b. AWQ INT4 — all caches + 16384 (best combined setting)
-  run_experiment "08b_awq_int4_all_caches" \
+  # 4b. AWQ + FlashAttention — no caches
+  run_experiment "quant_awq_flashattention" \
     --base-model "$AWQ_MODEL" \
     --adapter-path "$ADAPTER_PATH" \
     --dataset      "$DATASET" \
     --num-samples  "$NUM_SAMPLES" \
-    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+    --no-prefix-caching \
+    --disable-mm-preprocessor-cache \
+    --disable-chunked-mm-input
 else
-  echo "  ⚠  SKIP 08_awq: $AWQ_MODEL not found — run quantize_qwen3vl_awq.py first" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP quant: $AWQ_MODEL not found — run quantize_qwen3vl_awq.py first" | tee -a "$SUMMARY_FILE"
 fi
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 9: APPLY ALL — absolute best configuration
-# AWQ INT4 + Eagle3 + FlashAttention + all caches + 16384 token budget
-# This combines quantization (faster decode) with all other optimizations.
+# Section 5: Combined configurations
+# Matches the table's combined rows.
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "APPLY ALL (Eagle3 + Flash + all caches + 16384 + INT4)"
+print_section "COMBINED CONFIGURATIONS"
 
-if [[ -d "$AWQ_MODEL" && -d "$EAGLE3_MODEL" ]]; then
-  run_experiment "09_all_awq_eagle3_flash_caches_b16384" \
+# 5a. FlashAttention + cache
+run_experiment "combined_flashattention_cache" \
+  "${COMMON[@]}"
+
+# 5b. AWQ + FlashAttention + cache
+if [[ -d "$AWQ_MODEL" ]]; then
+  run_experiment "combined_awq_flashattention_cache" \
     --base-model   "$AWQ_MODEL" \
     --adapter-path "$ADAPTER_PATH" \
     --dataset      "$DATASET" \
-    --num-samples  "$NUM_SAMPLES" \
-    --eagle3 "$EAGLE3_MODEL" \
-    --num-speculative-tokens "$NUM_SPEC_TOKENS" \
-    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
-elif [[ -d "$AWQ_MODEL" ]]; then
-  echo "  ⚠  SKIP 09_all_awq_eagle3: $EAGLE3_MODEL not found — running without Eagle3" | tee -a "$SUMMARY_FILE"
-  run_experiment "09_all_awq_flash_caches_b16384" \
-    --base-model   "$AWQ_MODEL" \
-    --adapter-path "$ADAPTER_PATH" \
-    --dataset      "$DATASET" \
-    --num-samples  "$NUM_SAMPLES" \
-    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+    --num-samples  "$NUM_SAMPLES"
 else
-  echo "  ⚠  SKIP 09_all_awq: $AWQ_MODEL not found" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP combined_awq_flashattention_cache: $AWQ_MODEL not found" | tee -a "$SUMMARY_FILE"
+fi
+
+# 5c. Eagle3 + FlashAttention + cache
+if [[ -d "$EAGLE3_MODEL" ]]; then
+  run_experiment "combined_eagle3_flashattention_cache" \
+    "${COMMON[@]}" \
+    --eagle3 "$EAGLE3_MODEL" \
+    --num-speculative-tokens "$NUM_SPEC_TOKENS"
+else
+  echo "  ⚠  SKIP combined_eagle3_flashattention_cache: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
