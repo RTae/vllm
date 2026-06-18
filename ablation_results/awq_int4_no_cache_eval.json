@@ -1,7 +1,0 @@
-evaluation start!
-{'testlen': 695, 'reflen': 813, 'guess': [695, 681, 667, 653], 'correct': [496, 365, 261, 189]}
-ratio: 0.8548585485844343
-accuracy score:  0.9333333333333333
-match score:     66.66666594444445
-language score:  {'val/Bleu_1': 0.6022274437404007, 'val/Bleu_2': 0.5218972193057136, 'val/Bleu_3': 0.4480392930713436, 'val/Bleu_4': 0.384981757582735, 'val/ROUGE_L': np.float64(0.6305885546345572), 'val/CIDEr': np.float64(0.3424316703853051)}
-final combined score: 0.6616
