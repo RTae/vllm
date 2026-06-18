@@ -344,7 +344,6 @@ NUM_SAMPLES=1000 ./scripts/ablation_test.sh
 
 # run with nohup
 nohup bash -c 'NUM_SAMPLES=1000 ./scripts/ablation_test.sh' > ablation_test.log 2>&1 &
-echo "PID: $!"
 tail -f ablation_test.log
 ```
 
