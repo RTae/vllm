@@ -14,6 +14,7 @@ EAGLE3_MODEL="${EAGLE3_MODEL:-/workspace/.hf_home/qwen3-vl-8b-eagle3}"
 DATASET="${DATASET:-/workspace/vllm/datasets/DriveLM_nuScenes/split/val}"
 NUM_SAMPLES="${NUM_SAMPLES:--1}"
 NUM_SPEC_TOKENS="${NUM_SPEC_TOKENS:-5}"
+SPEC_TOKEN_SWEEP="${SPEC_TOKEN_SWEEP:-3 5 7}"
 # Default token budget for all runs. DriveLM seqs are ~8421 tokens, so 16384
 # keeps each request in a single prefill chunk unless a run overrides it.
 MAX_BATCHED_TOKENS="${MAX_BATCHED_TOKENS:-16384}"
@@ -232,45 +233,72 @@ run_experiment "cache_all" \
   --attention-backend TRITON_ATTN
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 3: Speculative Decoding
-# Fixed: Triton + all caches off — isolates SD strategy.
+# Section 3: FlashAttention cache ablation
+# Adds the missing cache points under the default FlashAttention backend.
 # ════════════════════════════════════════════════════════════════════════════════
-print_section "SPECULATIVE DECODING (Triton, all caches off)"
+print_section "FLASHATTENTION CACHE ABLATION"
+
+# 3a. FlashAttention + APC only
+run_experiment "cache_flash_apc_only" \
+  "${COMMON[@]}" \
+  --disable-mm-preprocessor-cache \
+  --disable-chunked-mm-input
+
+# 3b. FlashAttention + MM preprocessor cache only
+run_experiment "cache_flash_mm_prep" \
+  "${COMMON[@]}" \
+  --no-prefix-caching \
+  --disable-chunked-mm-input
+
+# 3c. FlashAttention + all caches is provided by combined_flashattention_cache.
+echo "  ↳ combined_flashattention_cache provides the FlashAttention + all caches point" | tee -a "$SUMMARY_FILE"
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Section 4: Speculative decoding k sweep
+# Fixed: Triton + all caches off — isolates SD strategy across k values.
+# ════════════════════════════════════════════════════════════════════════════════
+print_section "SPECULATIVE DECODING K SWEEP (Triton, all caches off)"
 
 SD_BASE=(
   "${COMMON[@]}"
   "${NO_CACHE[@]}"
 )
 
-# 3a. N-gram
-run_experiment "sd_ngram_k${NUM_SPEC_TOKENS}" \
-  "${SD_BASE[@]}" \
-  --ngram \
-  --num-speculative-tokens "$NUM_SPEC_TOKENS"
-
-# 3b. Draft model (merged 2B LoRA)
-if [[ -d "$DRAFT_MODEL" ]]; then
-  run_experiment "sd_draft_2b_k${NUM_SPEC_TOKENS}" \
+# 4a. N-gram
+for spec_k in $SPEC_TOKEN_SWEEP; do
+  run_experiment "sd_ngram_k${spec_k}" \
     "${SD_BASE[@]}" \
-    --speculative-decoding \
-    --draft-model "$DRAFT_MODEL" \
-    --num-speculative-tokens "$NUM_SPEC_TOKENS"
+    --ngram \
+    --num-speculative-tokens "$spec_k"
+done
+
+# 4b. Draft model (merged 2B LoRA)
+if [[ -d "$DRAFT_MODEL" ]]; then
+  for spec_k in $SPEC_TOKEN_SWEEP; do
+    run_experiment "sd_draft_2b_k${spec_k}" \
+      "${SD_BASE[@]}" \
+      --speculative-decoding \
+      --draft-model "$DRAFT_MODEL" \
+      --num-speculative-tokens "$spec_k"
+  done
 else
-  echo "  ⚠  SKIP sd_draft_2b: $DRAFT_MODEL not found" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP sd_draft_2b sweep: $DRAFT_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 
-# 3c. EAGLE3
+# 4c. EAGLE3
 if [[ -d "$EAGLE3_MODEL" ]]; then
-  run_experiment "sd_eagle3_k${NUM_SPEC_TOKENS}" \
-    "${SD_BASE[@]}" \
-    --eagle3 "$EAGLE3_MODEL" \
-    --num-speculative-tokens "$NUM_SPEC_TOKENS"
+  for spec_k in $SPEC_TOKEN_SWEEP; do
+    run_experiment "sd_eagle3_k${spec_k}" \
+      "${SD_BASE[@]}" \
+      --eagle3 "$EAGLE3_MODEL" \
+      --num-speculative-tokens "$spec_k"
+  done
 else
-  echo "  ⚠  SKIP sd_eagle3: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
+  echo "  ⚠  SKIP sd_eagle3 sweep: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 4: Quantization
+# Section 5: Quantization
 # Matches the table's quantization rows: AWQ and AWQ + FlashAttention.
 # ════════════════════════════════════════════════════════════════════════════════
 print_section "QUANTIZATION"
@@ -278,7 +306,7 @@ print_section "QUANTIZATION"
 AWQ_MODEL="${AWQ_MODEL:-/workspace/.hf_home/qwen3-vl-8b-awq-int4/}"
 
 if [[ -d "$AWQ_MODEL" ]]; then
-  # 4a. AWQ — no caches, Triton backend
+  # 5a. AWQ — no caches, Triton backend
   run_experiment "quant_awq" \
     --base-model "$AWQ_MODEL" \
     --adapter-path "$ADAPTER_PATH" \
@@ -289,7 +317,7 @@ if [[ -d "$AWQ_MODEL" ]]; then
     --disable-mm-preprocessor-cache \
     --disable-chunked-mm-input
 
-  # 4b. AWQ + FlashAttention — no caches
+  # 5b. AWQ + FlashAttention — no caches
   run_experiment "quant_awq_flashattention" \
     --base-model "$AWQ_MODEL" \
     --adapter-path "$ADAPTER_PATH" \
@@ -303,16 +331,16 @@ else
 fi
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Section 5: Combined configurations
+# Section 6: Combined configurations
 # Matches the table's combined rows.
 # ════════════════════════════════════════════════════════════════════════════════
 print_section "COMBINED CONFIGURATIONS"
 
-# 5a. FlashAttention + cache
+# 6a. FlashAttention + cache
 run_experiment "combined_flashattention_cache" \
   "${COMMON[@]}"
 
-# 5b. AWQ + FlashAttention + cache
+# 6b. AWQ + FlashAttention + cache
 if [[ -d "$AWQ_MODEL" ]]; then
   run_experiment "combined_awq_flashattention_cache" \
     --base-model   "$AWQ_MODEL" \
@@ -323,7 +351,7 @@ else
   echo "  ⚠  SKIP combined_awq_flashattention_cache: $AWQ_MODEL not found" | tee -a "$SUMMARY_FILE"
 fi
 
-# 5c. Eagle3 + FlashAttention + cache
+# 6c. Eagle3 + FlashAttention + cache
 if [[ -d "$EAGLE3_MODEL" ]]; then
   run_experiment "combined_eagle3_flashattention_cache" \
     "${COMMON[@]}" \
