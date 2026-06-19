@@ -15,7 +15,7 @@ DATASET="${DATASET:-/workspace/vllm/datasets/DriveLM_nuScenes/split/val}"
 NUM_SAMPLES="${NUM_SAMPLES:--1}"
 NUM_SPEC_TOKENS="${NUM_SPEC_TOKENS:-5}"
 SPEC_TOKEN_SWEEP="${SPEC_TOKEN_SWEEP:-3 5 7}"
-EAGLE3_MAX_NUM_SEQS="${EAGLE3_MAX_NUM_SEQS:-64}"
+EAGLE3_MAX_NUM_SEQS="${EAGLE3_MAX_NUM_SEQS:-32}"
 # Default token budget for all runs. DriveLM seqs are ~8421 tokens, so 16384
 # keeps each request in a single prefill chunk unless a run overrides it.
 MAX_BATCHED_TOKENS="${MAX_BATCHED_TOKENS:-16384}"
