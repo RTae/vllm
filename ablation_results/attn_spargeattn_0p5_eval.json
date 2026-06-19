@@ -1,0 +1,6 @@
+{'testlen': 7544, 'reflen': 8217, 'guess': [7544, 7406, 7268, 7130], 'correct': [6151, 5388, 4720, 4117]}
+ratio: 0.9180966289398906
+accuracy score:  0.8896103896103896
+match score:     55.55555488017429
+language score:  {'val/Bleu_1': 0.7457626870272495, 'val/Bleu_2': 0.7044506373668055, 'val/Bleu_3': 0.6655207570236864, 'val/Bleu_4': 0.6281425149708922, 'val/ROUGE_L': np.float64(0.7255015643927629), 'val/CIDEr': np.float64(0.48508992497866943)}
+final combined score: 0.6439

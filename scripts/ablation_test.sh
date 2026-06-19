@@ -30,6 +30,43 @@ SUMMARY_FILE="$RESULTS_DIR/summary.txt"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+append_metrics_summary() {
+  local metrics_file="$1"
+
+  "$PYTHON" - "$metrics_file" >> "$SUMMARY_FILE" <<'PYEOF'
+import json, sys
+data = json.load(open(sys.argv[1]))
+a = data.get("aggregate", {})
+print(f"    throughput       : {a.get('throughput_samples_per_s')} samples/s")
+print(f"    e2e latency p50  : {a.get('e2e_latency_p50_s')}s")
+print(f"    e2e latency p95  : {a.get('e2e_latency_p95_s')}s")
+print(f"    compute time mean: {a.get('request_compute_time_mean_s')}s  (prefill+decode)")
+print(f"    compute time p50 : {a.get('request_compute_time_p50_s')}s")
+print(f"    TTFT mean        : {a.get('ttft_mean_s')}s")
+print(f"    prefill time mean: {a.get('prefill_time_mean_s')}s")
+print(f"    prefill time p50 : {a.get('prefill_time_p50_s')}s")
+print(f"    decode time mean : {a.get('decode_time_mean_s')}s")
+print(f"    decode time p50  : {a.get('decode_time_p50_s')}s")
+print(f"    TPOT mean        : {a.get('tpot_mean_s')}s  (~ITL)")
+print(f"    TPOT p50         : {a.get('tpot_p50_s')}s")
+print(f"    tokens/s mean    : {a.get('tokens_per_second_mean')}")
+print(f"    total gen tokens : {a.get('total_gen_tokens')}")
+PYEOF
+}
+
+has_valid_metrics() {
+  local metrics_file="$1"
+
+  [[ -s "$metrics_file" ]] || return 1
+  "$PYTHON" - "$metrics_file" <<'PYEOF' >/dev/null 2>&1
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+if not isinstance(data, dict) or "aggregate" not in data:
+    raise SystemExit(1)
+PYEOF
+}
+
 # Run evaluation.py on a metrics JSON and append scores to summary
 run_eval() {
   local name="$1"
@@ -89,6 +126,13 @@ run_experiment() {
   echo "  Running: $name"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+  if has_valid_metrics "$metrics_file"; then
+    echo "  ↷ $name  SKIP (existing metrics found)" | tee -a "$SUMMARY_FILE"
+    append_metrics_summary "$metrics_file"
+    run_eval "$name"
+    return
+  fi
+
   local start_ts
   start_ts=$(date +%s)
 
@@ -101,25 +145,7 @@ run_experiment() {
   if [[ $exit_code -eq 0 ]]; then
     echo "  ✓ $name  wall=${elapsed}s" | tee -a "$SUMMARY_FILE"
     if [[ -f "$metrics_file" ]]; then
-      "$PYTHON" - "$metrics_file" >> "$SUMMARY_FILE" <<'PYEOF'
-import json, sys
-data = json.load(open(sys.argv[1]))
-a = data.get("aggregate", {})
-print(f"    throughput       : {a.get('throughput_samples_per_s')} samples/s")
-print(f"    e2e latency p50  : {a.get('e2e_latency_p50_s')}s")
-print(f"    e2e latency p95  : {a.get('e2e_latency_p95_s')}s")
-print(f"    compute time mean: {a.get('request_compute_time_mean_s')}s  (prefill+decode)")
-print(f"    compute time p50 : {a.get('request_compute_time_p50_s')}s")
-print(f"    TTFT mean        : {a.get('ttft_mean_s')}s")
-print(f"    prefill time mean: {a.get('prefill_time_mean_s')}s")
-print(f"    prefill time p50 : {a.get('prefill_time_p50_s')}s")
-print(f"    decode time mean : {a.get('decode_time_mean_s')}s")
-print(f"    decode time p50  : {a.get('decode_time_p50_s')}s")
-print(f"    TPOT mean        : {a.get('tpot_mean_s')}s  (~ITL)")
-print(f"    TPOT p50         : {a.get('tpot_p50_s')}s")
-print(f"    tokens/s mean    : {a.get('tokens_per_second_mean')}")
-print(f"    total gen tokens : {a.get('total_gen_tokens')}")
-PYEOF
+      append_metrics_summary "$metrics_file"
       # Run DriveLM evaluation (accuracy, match, language scores)
       run_eval "$name"
     fi
