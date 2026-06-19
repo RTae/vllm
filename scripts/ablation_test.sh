@@ -15,6 +15,7 @@ DATASET="${DATASET:-/workspace/vllm/datasets/DriveLM_nuScenes/split/val}"
 NUM_SAMPLES="${NUM_SAMPLES:--1}"
 NUM_SPEC_TOKENS="${NUM_SPEC_TOKENS:-5}"
 SPEC_TOKEN_SWEEP="${SPEC_TOKEN_SWEEP:-3 5 7}"
+EAGLE3_MAX_NUM_SEQS="${EAGLE3_MAX_NUM_SEQS:-64}"
 # Default token budget for all runs. DriveLM seqs are ~8421 tokens, so 16384
 # keeps each request in a single prefill chunk unless a run overrides it.
 MAX_BATCHED_TOKENS="${MAX_BATCHED_TOKENS:-16384}"
@@ -317,6 +318,7 @@ if [[ -d "$EAGLE3_MODEL" ]]; then
     run_experiment "sd_eagle3_k${spec_k}" \
       "${SD_BASE[@]}" \
       --eagle3 "$EAGLE3_MODEL" \
+      --max-num-seqs "$EAGLE3_MAX_NUM_SEQS" \
       --num-speculative-tokens "$spec_k"
   done
 else
@@ -398,6 +400,7 @@ if [[ -d "$EAGLE3_MODEL" ]]; then
   run_experiment "combined_eagle3_plus_flashattention_plus_cache" \
     "${COMMON[@]}" \
     --eagle3 "$EAGLE3_MODEL" \
+    --max-num-seqs "$EAGLE3_MAX_NUM_SEQS" \
     --num-speculative-tokens "$NUM_SPEC_TOKENS"
 else
   echo "  ⚠  SKIP combined_eagle3_plus_flashattention_plus_cache: $EAGLE3_MODEL not found" | tee -a "$SUMMARY_FILE"
@@ -411,6 +414,7 @@ if [[ -d "$AWQ_MODEL" && -d "$EAGLE3_MODEL" ]]; then
     --dataset      "$DATASET" \
     --num-samples  "$NUM_SAMPLES" \
     --eagle3 "$EAGLE3_MODEL" \
+    --max-num-seqs "$EAGLE3_MAX_NUM_SEQS" \
     --num-speculative-tokens "$NUM_SPEC_TOKENS"
 else
   echo "  ⚠  SKIP combined_awq_plus_eagle3_plus_flashattention_plus_cache: AWQ and/or Eagle3 model not found" | tee -a "$SUMMARY_FILE"

@@ -89,6 +89,17 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--max-num-seqs",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Maximum number of concurrent sequences scheduled by vLLM. "
+            "Lower this for memory-heavier modes such as Eagle3 speculative "
+            "decoding to avoid mid-run CUDA OOMs."
+        ),
+    )
+    parser.add_argument(
         "--kv-cache-dtype",
         type=str,
         default="auto",
@@ -637,6 +648,7 @@ def main():
         tensor_parallel_size=args.tensor_parallel_size,
         max_model_len=args.max_model_len,
         max_num_batched_tokens=args.max_num_batched_tokens,
+        max_num_seqs=args.max_num_seqs,
         mm_processor_kwargs={
             "min_pixels": args.min_pixels,
             "max_pixels": args.max_pixels,
