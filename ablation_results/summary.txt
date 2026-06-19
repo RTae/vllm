@@ -1,6 +1,6 @@
 
   ▶ BASE: Baseline
-  ✓ base_baseline  wall=1032s
+  ↷ base_baseline  SKIP (existing metrics found)
     throughput       : 1.106 samples/s
     e2e latency p50  : 349.4289s
     e2e latency p95  : 464.2299s
@@ -20,7 +20,7 @@
     final score      : 0.6470  (accuracy+match+language combined)
 
   ▶ ATTN: Attention Backends
-  ✓ attn_flashattention  wall=889s
+  ↷ attn_flashattention  SKIP (existing metrics found)
     throughput       : 1.308 samples/s
     e2e latency p50  : 270.4561s
     e2e latency p95  : 496.542s
@@ -38,7 +38,7 @@
     accuracy         : 0.8892508143322475
     match score      : 54.24836535185186
     final score      : 0.6387  (accuracy+match+language combined)
-  ✓ attn_flashinfer  wall=876s
+  ↷ attn_flashinfer  SKIP (existing metrics found)
     throughput       : 1.338 samples/s
     e2e latency p50  : 266.6817s
     e2e latency p95  : 495.3624s
@@ -56,7 +56,7 @@
     accuracy         : 0.8863636363636364
     match score      : 57.51633918736384
     final score      : 0.6489  (accuracy+match+language combined)
-  ✓ attn_spargeattn_0p5  wall=915s
+  ↷ attn_spargeattn_0p5  SKIP (existing metrics found)
     throughput       : 1.221 samples/s
     e2e latency p50  : 297.0784s
     e2e latency p95  : 497.2367s
@@ -74,7 +74,7 @@
     accuracy         : 0.8896103896103896
     match score      : 55.55555488017429
     final score      : 0.6439  (accuracy+match+language combined)
-  ✓ attn_xattention_0p5  wall=916s
+  ↷ attn_xattention_0p5  SKIP (existing metrics found)
     throughput       : 1.218 samples/s
     e2e latency p50  : 297.8232s
     e2e latency p95  : 496.7919s
@@ -94,7 +94,7 @@
     final score      : 0.6483  (accuracy+match+language combined)
 
   ▶ CACHE: Triton
-  ✓ cache_apc_only  wall=628s
+  ↷ cache_apc_only  SKIP (existing metrics found)
     throughput       : 1.99 samples/s
     e2e latency p50  : 249.1852s
     e2e latency p95  : 467.1647s
@@ -112,7 +112,7 @@
     accuracy         : 0.8888888888888888
     match score      : 55.55555488017429
     final score      : 0.6433  (accuracy+match+language combined)
-  ✓ cache_mm_prep  wall=846s
+  ↷ cache_mm_prep  SKIP (existing metrics found)
     throughput       : 1.388 samples/s
     e2e latency p50  : 306.5106s
     e2e latency p95  : 576.295s
@@ -130,7 +130,7 @@
     accuracy         : 0.8841059602649006
     match score      : 57.51633918736384
     final score      : 0.6478  (accuracy+match+language combined)
-  ✓ cache_chunked_mm  wall=1036s
+  ↷ cache_chunked_mm  SKIP (existing metrics found)
     throughput       : 1.098 samples/s
     e2e latency p50  : 346.9512s
     e2e latency p95  : 505.5077s
@@ -148,7 +148,7 @@
     accuracy         : 0.8938906752411575
     match score      : 56.86274441830066
     final score      : 0.6497  (accuracy+match+language combined)
-  ✓ cache_apc_plus_mm  wall=304s
+  ↷ cache_apc_plus_mm  SKIP (existing metrics found)
     throughput       : 5.544 samples/s
     e2e latency p50  : 67.0634s
     e2e latency p95  : 93.4079s
@@ -166,7 +166,7 @@
     accuracy         : 0.8878205128205128
     match score      : 54.901960111111116
     final score      : 0.6417  (accuracy+match+language combined)
-  ✓ cache_all_caches  wall=302s
+  ↷ cache_all_caches  SKIP (existing metrics found)
     throughput       : 5.677 samples/s
     e2e latency p50  : 63.7732s
     e2e latency p95  : 100.7035s
@@ -186,7 +186,7 @@
     final score      : 0.6442  (accuracy+match+language combined)
 
   ▶ CACHE: FlashAttention
-  ✓ cache_flashattention_apc_only  wall=669s
+  ↷ cache_flashattention_apc_only  SKIP (existing metrics found)
     throughput       : 1.844 samples/s
     e2e latency p50  : 269.5302s
     e2e latency p95  : 505.4695s
@@ -204,7 +204,7 @@
     accuracy         : 0.8906752411575563
     match score      : 56.86274441830066
     final score      : 0.6479  (accuracy+match+language combined)
-  ✓ cache_flashattention_mm_prep  wall=710s
+  ↷ cache_flashattention_mm_prep  SKIP (existing metrics found)
     throughput       : 1.703 samples/s
     e2e latency p50  : 247.9389s
     e2e latency p95  : 464.2461s
@@ -225,7 +225,7 @@
   ↳ combined_flashattention_plus_cache provides the FlashAttention + all caches point
 
   ▶ SD: K Sweep
-  ✓ sd_ngram_k3  wall=1129s
+  ↷ sd_ngram_k3  SKIP (existing metrics found)
     throughput       : 1.001 samples/s
     e2e latency p50  : 381.3152s
     e2e latency p95  : 545.238s
@@ -243,7 +243,7 @@
     accuracy         : 0.8930817610062893
     match score      : 54.24836534204793
     final score      : 0.6408  (accuracy+match+language combined)
-  ✓ sd_ngram_k5  wall=1134s
+  ↷ sd_ngram_k5  SKIP (existing metrics found)
     throughput       : 0.999 samples/s
     e2e latency p50  : 384.7418s
     e2e latency p95  : 547.9601s
@@ -261,7 +261,7 @@
     accuracy         : 0.8920634920634921
     match score      : 56.86274442810458
     final score      : 0.6496  (accuracy+match+language combined)
-  ✓ sd_ngram_k7  wall=1133s
+  ↷ sd_ngram_k7  SKIP (existing metrics found)
     throughput       : 0.996 samples/s
     e2e latency p50  : 383.3315s
     e2e latency p95  : 553.8735s
@@ -279,7 +279,7 @@
     accuracy         : 0.8910256410256411
     match score      : 56.86274441830066
     final score      : 0.6487  (accuracy+match+language combined)
-  ✓ sd_draft_2b_k3  wall=1364s
+  ↷ sd_draft_2b_k3  SKIP (existing metrics found)
     throughput       : 0.822 samples/s
     e2e latency p50  : 451.5146s
     e2e latency p95  : 666.2874s
@@ -297,7 +297,7 @@
     accuracy         : 0.8949044585987261
     match score      : 52.94117581372549
     final score      : 0.6372  (accuracy+match+language combined)
-  ✓ sd_draft_2b_k5  wall=1452s
+  ↷ sd_draft_2b_k5  SKIP (existing metrics found)
     throughput       : 0.773 samples/s
     e2e latency p50  : 472.9445s
     e2e latency p95  : 738.7597s
@@ -315,7 +315,7 @@
     accuracy         : 0.8920634920634921
     match score      : 54.90196012091503
     final score      : 0.6429  (accuracy+match+language combined)
-  ✓ sd_draft_2b_k7  wall=1546s
+  ↷ sd_draft_2b_k7  SKIP (existing metrics found)
     throughput       : 0.725 samples/s
     e2e latency p50  : 490.1316s
     e2e latency p95  : 817.9863s
