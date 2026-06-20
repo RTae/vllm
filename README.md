@@ -82,8 +82,14 @@ MAX_JOBS=4 uv pip install --python .venv/bin/python --no-build-isolation -e ./sp
 python scripts/create_drivelm_nuscenes.py
 ```
 
-2. Download models:
+2. Download finetuned LoRA adapter model from this links below
 
+| Model | Link |
+|---|---|
+| Qwen3-VL-8B-Instruct LoRA adapter | [Google Drive](https://drive.google.com/file/d/1sXo9n8j2l7m9sXG8n2j3l7m9sXG8n2j3l/view?usp=sharing) |
+| Qwen3-VL-2B-Instruct LoRA adapter | [Google Drive](https://drive.google.com/file/d/1sXo9n8j2l7m9sXG8n2j3l7m9sXG8n2j3l/view?usp=sharing) |
+
+3. Download base models (Qwen3-VL-8B and Qwen3-VL-2B) and EAGLE3 models from Hugging Face or use the provided download script:
 ```bash
 ./scripts/download_models.sh
 ```

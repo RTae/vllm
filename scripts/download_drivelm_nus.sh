@@ -1,5 +1,7 @@
 #!/bin/bash
 
+mkdir -p ./datasets
+
 # Download mapping files for DriveLM-NUS dataset
 wget https://cloud.tsinghua.edu.cn/f/768fdde7e79a4c96a0ae/?dl=1 -O ./datasets/v1_1_train_nus.json 
 # Download image files for DriveLM-NUS dataset
