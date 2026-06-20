@@ -31,11 +31,20 @@ python scripts/create_drivelm_nuscenes.py
 | Qwen3-VL-8B-Instruct LoRA adapter | [Google Drive](https://drive.google.com/file/d/1I9C5TxNvwl6JQ6nMlwESbN_s6XfIdWxn/view?usp=sharing) |
 | Qwen3-VL-2B-Instruct LoRA adapter | [Google Drive](https://drive.google.com/file/d/1wf9eHxhtDiZPNVWutyzizeYvr6ygOk3Z/view?usp=sharing) |
 
+3. Unzip the downloaded LoRA adapter files and place them in the `vllm/models/` directory as follows:
+
+```text
+vllm/
+├── models/
+│   ├── Qwen3-VL-8B-Instruct/  # place Qwen3-VL-8B LoRA adapter here
+│   └── Qwen3-VL-2B-Instruct/  # place Qwen3-VL-2B LoRA adapter here
+```
+
 3. Download base models (Qwen3-VL-8B and Qwen3-VL-2B) and EAGLE3 models from Hugging Face or use the provided download script:
+
 ```bash
 ./scripts/download_models.sh
 ```
-
 
 ## Quantization (AWQ INT4)
 
