@@ -1,65 +1,6 @@
-<!-- markdownlint-disable MD001 MD041 -->
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vllm-project/vllm/main/docs/assets/logos/vllm-logo-text-dark.png">
-    <img alt="vLLM" src="https://raw.githubusercontent.com/vllm-project/vllm/main/docs/assets/logos/vllm-logo-text-light.png" width=55%>
-  </picture>
-</p>
+# FastDriveLM: Accelerating Long-Context Multimodal Inference with Quantization, Sparse Attention, and Speculative Decoding
 
-<h3 align="center">
-Easy, fast, and cheap LLM serving for everyone
-</h3>
-
-<p align="center">
-| <a href="https://docs.vllm.ai"><b>Documentation</b></a> | <a href="https://blog.vllm.ai/"><b>Blog</b></a> | <a href="https://arxiv.org/abs/2309.06180"><b>Paper</b></a> | <a href="https://x.com/vllm_project"><b>Twitter/X</b></a> | <a href="https://discuss.vllm.ai"><b>User Forum</b></a> | <a href="https://slack.vllm.ai"><b>Developer Slack</b></a> |
-</p>
-
-🔥 We have built a vLLM website to help you get started with vLLM. Please visit [vllm.ai](https://vllm.ai) to learn more.
-For events, please visit [vllm.ai/events](https://vllm.ai/events) to join us.
-
----
-
-## About
-
-vLLM is a fast and easy-to-use library for LLM inference and serving.
-
-Originally developed in the [Sky Computing Lab](https://sky.cs.berkeley.edu) at UC Berkeley, vLLM has grown into one of the most active open-source AI projects built and maintained by a diverse community of many dozens of academic institutions and companies from over 2000 contributors.
-
-vLLM is fast with:
-
-- State-of-the-art serving throughput
-- Efficient management of attention key and value memory with [**PagedAttention**](https://blog.vllm.ai/2023/06/20/vllm.html)
-- Continuous batching of incoming requests, chunked prefill, prefix caching
-- Fast and flexible model execution with piecewise and full CUDA/HIP graphs
-- Quantization: FP8, MXFP8/MXFP4, NVFP4, INT8, INT4, GPTQ/AWQ, GGUF, compressed-tensors, ModelOpt, TorchAO, and [more](https://docs.vllm.ai/en/latest/features/quantization/index.html)
-- Optimized attention kernels including FlashAttention, FlashInfer, TRTLLM-GEN, FlashMLA, and Triton
-- Optimized GEMM/MoE kernels for various precisions using CUTLASS, TRTLLM-GEN, CuTeDSL
-- Speculative decoding including n-gram, suffix, EAGLE, DFlash
-- Automatic kernel generation and graph-level transformations using torch.compile
-- Disaggregated prefill, decode, and encode
-
-vLLM is flexible and easy to use with:
-
-- Seamless integration with popular Hugging Face models
-- High-throughput serving with various decoding algorithms, including *parallel sampling*, *beam search*, and more
-- Tensor, pipeline, data, expert, and context parallelism for distributed inference
-- Streaming outputs
-- Generation of structured outputs using xgrammar or guidance
-- Tool calling and reasoning parsers
-- OpenAI-compatible API server, plus Anthropic Messages API and gRPC support
-- Efficient multi-LoRA support for dense and MoE layers
-- Support for NVIDIA GPUs, AMD GPUs, and x86/ARM/PowerPC CPUs. Additionally, diverse hardware plugins such as Google TPUs, Intel Gaudi, IBM Spyre, Huawei Ascend, Rebellions NPU, Apple Silicon, MetaX GPU, and more.
-
-vLLM seamlessly supports 200+ model architectures on Hugging Face, including:
-
-- Decoder-only LLMs (e.g., Llama, Qwen, Gemma)
-- Mixture-of-Expert LLMs (e.g., Mixtral, DeepSeek-V3, Qwen-MoE, GPT-OSS)
-- Hybrid attention and state-space models (e.g., Mamba, Qwen3.5)
-- Multi-modal models (e.g., LLaVA, Qwen-VL, Pixtral)
-- Embedding and retrieval models (e.g., E5-Mistral, GTE, ColBERT)
-- Reward and classification models (e.g., Qwen-Math)
-
-Find the full list of supported models [here](https://docs.vllm.ai/en/latest/models/supported_models.html).
+This repository contains code for FastDriveLM, a collection of techniques to accelerate long-context multimodal inference on Qwen3-VL models. We demonstrate these optimizations on the DriveLM task, which involves generating driving decisions from 6-camera input sequences up to 16k tokens.
 
 ## Installation
 
@@ -74,6 +15,7 @@ MAX_JOBS=4 uv pip install --python .venv/bin/python --no-build-isolation -e ./sp
 ```
 
 ## Download Models and Datasets
+
 1. Download datasets:
 
 ```bash
@@ -82,12 +24,12 @@ MAX_JOBS=4 uv pip install --python .venv/bin/python --no-build-isolation -e ./sp
 python scripts/create_drivelm_nuscenes.py
 ```
 
-2. Download finetuned LoRA adapter model from this links below
+2. Download finetuned LoRA adapter model from these links below
 
 | Model | Link |
 |---|---|
-| Qwen3-VL-8B-Instruct LoRA adapter | [Google Drive](https://drive.google.com/file/d/1sXo9n8j2l7m9sXG8n2j3l7m9sXG8n2j3l/view?usp=sharing) |
-| Qwen3-VL-2B-Instruct LoRA adapter | [Google Drive](https://drive.google.com/file/d/1sXo9n8j2l7m9sXG8n2j3l7m9sXG8n2j3l/view?usp=sharing) |
+| Qwen3-VL-8B-Instruct LoRA adapter | [Google Drive](https://drive.google.com/file/d/1I9C5TxNvwl6JQ6nMlwESbN_s6XfIdWxn/view?usp=sharing) |
+| Qwen3-VL-2B-Instruct LoRA adapter | [Google Drive](https://drive.google.com/file/d/1wf9eHxhtDiZPNVWutyzizeYvr6ygOk3Z/view?usp=sharing) |
 
 3. Download base models (Qwen3-VL-8B and Qwen3-VL-2B) and EAGLE3 models from Hugging Face or use the provided download script:
 ```bash
